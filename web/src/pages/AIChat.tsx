@@ -1,19 +1,16 @@
 import { BotIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { aiStore } from "@/store";
 import { useTranslate } from "@/utils/i18n";
 import ChatInterface from "@/components/ChatInterface";
-import CreateConversationDialog from "@/components/CreateConversationDialog";
 
 const AIChat = observer(() => {
   const t = useTranslate();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const conversationId = searchParams.get("c") ? parseInt(searchParams.get("c")!) : null;
 
   useEffect(() => {
@@ -47,14 +44,10 @@ const AIChat = observer(() => {
     }
   };
 
-  const handleCreateConversation = async (name: string, provider: string, model: string, systemPrompt?: string) => {
-    try {
-      const conversation = await aiStore.createConversation(name, provider, model, systemPrompt);
-      setShowCreateDialog(false);
-      setSearchParams({ c: conversation.id.toString() });
-    } catch (error) {
-      console.error("Failed to create conversation:", error);
-    }
+  const handleNewChat = () => {
+    // Clear current conversation to show empty chat
+    setSearchParams({});
+    aiStore.clearCurrentConversation();
   };
 
   const availableProviders = aiStore.getAvailableProviders();
@@ -72,7 +65,7 @@ const AIChat = observer(() => {
           </div>
           <Button
             className="w-full"
-            onClick={() => setShowCreateDialog(true)}
+            onClick={handleNewChat}
             disabled={availableProviders.length === 0}
           >
             <PlusIcon className="w-4 h-4 mr-2" />
@@ -129,33 +122,8 @@ const AIChat = observer(() => {
 
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
-        {aiStore.currentConversation ? (
-          <ChatInterface />
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-4">
-              <BotIcon className="w-16 h-16 mx-auto text-muted-foreground" />
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold">{t("ai.welcome")}</h2>
-                <p className="text-muted-foreground">{t("ai.select-or-create-conversation")}</p>
-              </div>
-              {availableProviders.length > 0 && (
-                <Button onClick={() => setShowCreateDialog(true)}>
-                  <PlusIcon className="w-4 h-4 mr-2" />
-                  {t("ai.new-conversation")}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        <ChatInterface onConversationCreated={(id) => setSearchParams({ c: id.toString() })} />
       </div>
-
-      <CreateConversationDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        onConfirm={handleCreateConversation}
-        providers={availableProviders}
-      />
     </div>
   );
 });

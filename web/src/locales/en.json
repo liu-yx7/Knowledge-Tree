@@ -13,6 +13,7 @@
     "no-conversations": "No conversations yet. Create one to get started!",
     "no-providers-configured": "No AI providers configured. Please contact your administrator.",
     "select-or-create-conversation": "Select a conversation from the sidebar or create a new one to start chatting.",
+    "start-chatting": "Start chatting with AI by typing your message below",
     "messages": "messages",
     "type-message": "Type your message...",
     "create-conversation": "Create Conversation",
