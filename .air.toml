@@ -12,7 +12,7 @@ tmp_dir = "tmp"
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false
-  full_bin = ""
+  full_bin = "MEMOS_MODE=dev MEMOS_PORT=8080 MEMOS_DRIVER=postgres MEMOS_DSN='postgresql://localhost:5432/know_tree?sslmode=disable' ./tmp/main"
   include_dir = []
   include_ext = ["go", "tpl", "tmpl", "html"]
   kill_delay = "0s"

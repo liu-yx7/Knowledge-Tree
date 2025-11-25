@@ -4,23 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Memos is a lightweight, self-hosted knowledge management and note-taking platform. The architecture pairs a Go backend with a React+Vite frontend, using gRPC for internal communication and providing REST API access via gRPC-Gateway.
+Knowledge Tree is a lightweight knowledge management, note-taking, and note sharing ai platform. The architecture pairs a Go backend with a React+Vite frontend, using gRPC for internal communication and providing REST API access via gRPC-Gateway.
 
 ## Development Commands
 
 ### Backend (Go)
 
 **Start Development Server:**
+
 ```bash
 go run ./cmd/memos --mode dev --port 8081
 ```
 
 **Build Binary:**
+
 ```bash
 go build ./cmd/memos
 ```
 
 **Run Tests:**
+
 ```bash
 go test ./...                    # All tests
 go test ./store/...              # Store layer tests only
@@ -28,11 +31,13 @@ go test ./server/router/api/v1/test/...  # API tests
 ```
 
 **Lint:**
+
 ```bash
 golangci-lint run                # Full lint check (uses .golangci.yaml)
 ```
 
 **Generate Protocol Buffers:**
+
 ```bash
 cd proto
 buf generate                     # Generate Go/TypeScript from .proto files
@@ -42,18 +47,21 @@ buf format -w                    # Format proto files
 ### Frontend (React + Vite)
 
 **Install Dependencies:**
+
 ```bash
 cd web
 pnpm install
 ```
 
 **Development Server:**
+
 ```bash
 cd web
 pnpm dev                         # Hot-reload dev server (typically :5173)
 ```
 
 **Build:**
+
 ```bash
 cd web
 pnpm build                       # Build to web/dist/
@@ -61,6 +69,7 @@ pnpm release                     # Build and copy to server/router/frontend/dist
 ```
 
 **Lint and Format:**
+
 ```bash
 cd web
 pnpm lint                        # TypeScript check + Biome lint
@@ -120,10 +129,12 @@ web/                 # Frontend React application
 
 **Dual Protocol Serving:**
 The server uses `cmux` (connection multiplexer) to serve both gRPC and HTTP on the same port:
+
 - **HTTP/2 + `application/grpc`** → Native gRPC server
 - **HTTP/1.1** → Echo server (REST API via gRPC-Gateway, static files, RSS)
 
 **API Services** (defined in `proto/api/v1/*.proto`):
+
 - `InstanceService` - Instance settings and profiles
 - `AuthService` - Authentication and session management
 - `UserService` - User management
@@ -136,6 +147,7 @@ The server uses `cmux` (connection multiplexer) to serve both gRPC and HTTP on t
 - `ShortcutService` - User shortcuts
 
 **API Access Methods:**
+
 1. **Native gRPC** - Direct gRPC calls to `memos.api.v1.*` services
 2. **REST API** - HTTP REST at `/api/v1/*` (via gRPC-Gateway)
 3. **gRPC-Web** - Browser gRPC calls to `/memos.api.v1.*` (via grpc-web proxy)
@@ -144,6 +156,7 @@ The server uses `cmux` (connection multiplexer) to serve both gRPC and HTTP on t
 
 **Store Interface:**
 The `store.Driver` interface (`store/driver.go`) defines all data access methods. Three implementations exist:
+
 - `store/db/sqlite/` - SQLite driver (default, embedded database)
 - `store/db/mysql/` - MySQL driver
 - `store/db/postgres/` - PostgreSQL driver
@@ -152,6 +165,7 @@ The `store.Driver` interface (`store/driver.go`) defines all data access methods
 Each driver contains its own migration files in subdirectories. Schema version tracking is stored in `instance_setting` (key: `bb.general.version`). The `store/migrator.go` orchestrates migrations across all drivers.
 
 **Key Models:**
+
 - `Memo` - Core note/memo entity
 - `User` - User accounts
 - `Attachment` - Uploaded files and images
@@ -166,6 +180,7 @@ Each driver contains its own migration files in subdirectories. Schema version t
 ### Frontend Architecture
 
 **Tech Stack:**
+
 - **Framework:** React 18 with TypeScript
 - **Build Tool:** Vite 7
 - **Routing:** React Router 7
@@ -176,6 +191,7 @@ Each driver contains its own migration files in subdirectories. Schema version t
 
 **State Management:**
 MobX stores in `web/src/store/` handle global state:
+
 - `userStore` - Current user session
 - `memoStore` - Memo collection and filters
 - `editorStore` - Memo editor state
@@ -188,10 +204,12 @@ The frontend uses `nice-grpc-web` to call backend services. Client setup is in `
 ### Authentication
 
 **Dual Auth Support:**
+
 1. **Session-based (Cookie):** `user_session` cookie with format `{userID}-{sessionID}`
 2. **Token-based (JWT):** `Authorization: Bearer <token>` header
 
 **Flow:**
+
 - Authentication interceptor (`server/router/api/v1/acl.go`) runs on all gRPC methods
 - Public endpoints bypass auth (see `acl_config.go` for allowlist)
 - Context values set: `userIDContextKey`, `sessionIDContextKey`, `accessTokenContextKey`
@@ -219,6 +237,7 @@ The frontend uses `nice-grpc-web` to call backend services. Client setup is in `
 ### Commit Messages
 
 Follow Conventional Commits format:
+
 - `feat(scope): description` - New features
 - `fix(scope): description` - Bug fixes
 - `chore(scope): description` - Maintenance tasks
@@ -231,6 +250,7 @@ Scopes: `server`, `api`, `store`, `web`, `proto`, etc.
 ## Testing
 
 **Go Tests:**
+
 - Test files: `*_test.go` alongside source files
 - Run specific package: `go test ./store/cache/...`
 - API integration tests: `server/router/api/v1/test/*_test.go`
@@ -244,12 +264,14 @@ Currently relies on linting and manual testing. For UI changes, validate with lo
 **Prerequisites:** Install [buf](https://docs.buf.build/installation)
 
 **Modifying APIs:**
+
 1. Edit `.proto` files in `proto/api/v1/`
 2. Run `cd proto && buf generate` to regenerate Go and TypeScript code
 3. Update service implementations in `server/router/api/v1/`
 4. Update frontend gRPC-Web clients in `web/src/`
 
 **Generated Code Locations:**
+
 - Go: `proto/gen/api/v1/`
 - TypeScript: `web/src/types/proto/api/v1/`
 
@@ -258,6 +280,7 @@ Currently relies on linting and manual testing. For UI changes, validate with lo
 When adding database schema changes:
 
 1. Create migration file in driver-specific directory:
+
    - SQLite: `store/db/sqlite/migration/`
    - MySQL: `store/db/mysql/migration/`
    - PostgreSQL: `store/db/postgres/migration/`
@@ -306,6 +329,7 @@ State is typically managed in MobX stores (`web/src/store/`).
 ## Production Deployment
 
 **Docker (Recommended):**
+
 ```bash
 docker run -d \
   --name memos \
@@ -315,18 +339,21 @@ docker run -d \
 ```
 
 **From Source:**
+
 1. Build frontend: `cd web && pnpm install && pnpm release`
 2. Build backend: `go build -o memos ./cmd/memos`
 3. Run: `./memos --mode prod --port 5230`
 
 **Data Directory:**
 For SQLite (default), all data is stored in the directory specified by `--data` flag. This includes:
+
 - `memos_prod.db` - SQLite database
 - `assets/` - Uploaded files (unless using S3-compatible storage)
 
 ## Key Dependencies
 
 **Backend:**
+
 - `github.com/spf13/cobra` - CLI framework
 - `github.com/spf13/viper` - Configuration management
 - `google.golang.org/grpc` - gRPC server
@@ -337,6 +364,7 @@ For SQLite (default), all data is stored in the directory specified by `--data` 
 - `github.com/golang-jwt/jwt/v5` - JWT authentication
 
 **Frontend:**
+
 - `react` / `react-dom` - UI framework
 - `react-router-dom` - Routing
 - `mobx` / `mobx-react-lite` - State management

@@ -52,7 +52,7 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	s.echoServer = echoServer
 
 	instanceBasicSetting, err := s.getOrUpsertInstanceBasicSetting(ctx)
-	if err != nil {
+	if (err != nil) {
 		return nil, errors.Wrap(err, "failed to get instance basic setting")
 	}
 
@@ -82,7 +82,11 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 			apiv1.NewLoggerInterceptor(logStacktraces).LoggerInterceptor,
 			newRecoveryInterceptor(logStacktraces),
 			apiv1.NewGRPCAuthInterceptor(store, secret).AuthenticationInterceptor,
-		))
+		),
+		grpc.ChainStreamInterceptor(
+			apiv1.NewGRPCAuthInterceptor(store, secret).StreamAuthenticationInterceptor,
+		),
+	)
 	s.grpcServer = grpcServer
 
 	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, grpcServer)

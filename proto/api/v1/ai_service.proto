@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "api/v1/common.proto";
+import "google/api/annotations.proto";
+import "google/api/client.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/v1";
+
+service AIService {
+  // CreateConversation creates a new AI conversation
+  rpc CreateConversation(CreateConversationRequest) returns (Conversation) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/conversations"
+      body: "*"
+    };
+  }
+
+  // ListConversations lists all conversations for the current user
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/ai/conversations"
+    };
+  }
+
+  // GetConversation retrieves a specific conversation
+  rpc GetConversation(GetConversationRequest) returns (Conversation) {
+    option (google.api.http) = {
+      get: "/api/v1/ai/conversations/{conversation_id}"
+    };
+  }
+
+  // DeleteConversation deletes a conversation
+  rpc DeleteConversation(DeleteConversationRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/api/v1/ai/conversations/{conversation_id}"
+    };
+  }
+
+  // UpdateConversation updates conversation metadata
+  rpc UpdateConversation(UpdateConversationRequest) returns (Conversation) {
+    option (google.api.http) = {
+      patch: "/api/v1/ai/conversations/{conversation_id}"
+      body: "*"
+    };
+  }
+
+  // SendMessage sends a message and streams the AI response
+  rpc SendMessage(SendMessageRequest) returns (stream MessageChunk) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/conversations/{conversation_id}/messages"
+      body: "*"
+    };
+  }
+
+  // ListMessages lists messages in a conversation
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/ai/conversations/{conversation_id}/messages"
+    };
+  }
+
+  // ListProviders lists available LLM providers
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/ai/providers"
+    };
+  }
+
+  // ConfigureProvider configures an LLM provider (admin only)
+  rpc ConfigureProvider(ConfigureProviderRequest) returns (Provider) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/providers"
+      body: "*"
+    };
+  }
+}
+
+message Conversation {
+  int32 id = 1;
+  string name = 2;
+  int32 creator_id = 3;
+  string llm_provider = 4;
+  string llm_model = 5;
+  string system_prompt = 6;
+  google.protobuf.Timestamp created_time = 7;
+  google.protobuf.Timestamp updated_time = 8;
+  int32 message_count = 9; // Computed field
+}
+
+message Message {
+  int32 id = 1;
+  int32 conversation_id = 2;
+  string role = 3; // "user" or "assistant"
+  string content = 4;
+  int32 tokens = 5;
+  google.protobuf.Timestamp created_time = 6;
+}
+
+message Provider {
+  string name = 1;
+  string display_name = 2;
+  string api_endpoint = 3;
+  repeated string available_models = 4;
+  bool enabled = 5;
+  bool configured = 6; // Whether API key is set
+}
+
+message CreateConversationRequest {
+  string name = 1;
+  string llm_provider = 2;
+  string llm_model = 3;
+  string system_prompt = 4;
+}
+
+message ListConversationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+  string next_page_token = 2;
+}
+
+message GetConversationRequest {
+  int32 conversation_id = 1;
+}
+
+message DeleteConversationRequest {
+  int32 conversation_id = 1;
+}
+
+message UpdateConversationRequest {
+  int32 conversation_id = 1;
+  string name = 2;
+  string system_prompt = 3;
+}
+
+message SendMessageRequest {
+  int32 conversation_id = 1;
+  string content = 2;
+}
+
+message MessageChunk {
+  string content = 1; // Partial content for streaming
+  bool is_final = 2; // True for the last chunk
+  Message message = 3; // Full message when is_final=true
+}
+
+message ListMessagesRequest {
+  int32 conversation_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  string next_page_token = 2;
+}
+
+message ListProvidersRequest {}
+
+message ListProvidersResponse {
+  repeated Provider providers = 1;
+}
+
+message ConfigureProviderRequest {
+  string name = 1;
+  string display_name = 2;
+  string api_key = 3;
+  string api_endpoint = 4;
+  string config = 5; // JSON string
+  bool enabled = 6;
+}

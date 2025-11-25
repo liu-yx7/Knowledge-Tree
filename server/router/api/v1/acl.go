@@ -104,6 +104,72 @@ func (in *GRPCAuthInterceptor) AuthenticationInterceptor(ctx context.Context, re
 	return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 }
 
+// StreamAuthenticationInterceptor is the stream interceptor for gRPC API.
+// It applies the same authentication logic as the unary interceptor but for streaming RPCs.
+func (in *GRPCAuthInterceptor) StreamAuthenticationInterceptor(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	ctx := ss.Context()
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return status.Errorf(codes.Unauthenticated, "failed to parse metadata from incoming context")
+	}
+
+	// Authentication Method 1: Session-based authentication (Cookie)
+	if sessionCookieValue, err := getSessionIDFromMetadata(md); err == nil && sessionCookieValue != "" {
+		user, err := in.authenticateBySession(ctx, sessionCookieValue)
+		if err == nil && user != nil {
+			_, sessionID, parseErr := ParseSessionCookieValue(sessionCookieValue)
+			if parseErr != nil {
+				return status.Errorf(codes.Internal, "failed to parse session cookie: %v", parseErr)
+			}
+			ctx = in.createAuthenticatedContext(ctx, user, sessionID, "")
+			_ = in.updateSessionLastAccessed(ctx, user.ID, sessionID)
+			return handler(srv, &authenticatedServerStream{ServerStream: ss, ctx: ctx})
+		}
+	}
+
+	// Authentication Method 2: Token-based authentication (JWT)
+	if accessToken, err := getAccessTokenFromMetadata(md); err == nil && accessToken != "" {
+		user, err := in.authenticateByJWT(ctx, accessToken)
+		if err == nil && user != nil {
+			ctx = in.createAuthenticatedContext(ctx, user, "", accessToken)
+			return handler(srv, &authenticatedServerStream{ServerStream: ss, ctx: ctx})
+		}
+	}
+
+	// Authentication Method 3: Public endpoints
+	if isUnauthorizeAllowedMethod(info.FullMethod) {
+		return handler(srv, ss)
+	}
+
+	return status.Errorf(codes.Unauthenticated, "authentication required")
+}
+
+// createAuthenticatedContext creates a context with authentication information.
+func (in *GRPCAuthInterceptor) createAuthenticatedContext(ctx context.Context, user *store.User, sessionID, accessToken string) context.Context {
+	if user.RowStatus == store.Archived {
+		return ctx
+	}
+
+	ctx = context.WithValue(ctx, UserIDContextKey, user.ID)
+	if sessionID != "" {
+		ctx = context.WithValue(ctx, sessionIDContextKey, sessionID)
+	} else if accessToken != "" {
+		ctx = context.WithValue(ctx, accessTokenContextKey, accessToken)
+	}
+	return ctx
+}
+
+// authenticatedServerStream wraps a grpc.ServerStream with an authenticated context.
+type authenticatedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+// Context returns the authenticated context.
+func (s *authenticatedServerStream) Context() context.Context {
+	return s.ctx
+}
+
 // handleAuthenticatedRequest processes an authenticated request with the given user and auth info.
 func (in *GRPCAuthInterceptor) handleAuthenticatedRequest(ctx context.Context, request any, serverInfo *grpc.UnaryServerInfo, handler grpc.UnaryHandler, user *store.User, sessionID, accessToken string) (any, error) {
 	// Check user status

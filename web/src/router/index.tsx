@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import Loading from "@/pages/Loading";
 
 const AdminSignIn = lazy(() => import("@/pages/AdminSignIn"));
+const AIChat = lazy(() => import("@/pages/AIChat"));
 const Archived = lazy(() => import("@/pages/Archived"));
 const AuthCallback = lazy(() => import("@/pages/AuthCallback"));
 const Explore = lazy(() => import("@/pages/Explore"));
@@ -29,6 +30,7 @@ export enum Routes {
   SETTING = "/setting",
   EXPLORE = "/explore",
   AUTH = "/auth",
+  AI_CHAT = "/ai",
 }
 
 const router = createBrowserRouter([
@@ -109,6 +111,14 @@ const router = createBrowserRouter([
                 ),
               },
             ],
+          },
+          {
+            path: Routes.AI_CHAT,
+            element: (
+              <Suspense fallback={<Loading />}>
+                <AIChat />
+              </Suspense>
+            ),
           },
           {
             path: Routes.ATTACHMENTS,

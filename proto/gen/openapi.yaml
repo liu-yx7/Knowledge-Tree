@@ -69,6 +69,247 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /api/v1/ai/conversations:
+        get:
+            tags:
+                - AIService
+            description: ListConversations lists all conversations for the current user
+            operationId: AIService_ListConversations
+            parameters:
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListConversationsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - AIService
+            description: CreateConversation creates a new AI conversation
+            operationId: AIService_CreateConversation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateConversationRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Conversation'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ai/conversations/{conversationId}:
+        get:
+            tags:
+                - AIService
+            description: GetConversation retrieves a specific conversation
+            operationId: AIService_GetConversation
+            parameters:
+                - name: conversationId
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Conversation'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - AIService
+            description: DeleteConversation deletes a conversation
+            operationId: AIService_DeleteConversation
+            parameters:
+                - name: conversationId
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - AIService
+            description: UpdateConversation updates conversation metadata
+            operationId: AIService_UpdateConversation
+            parameters:
+                - name: conversationId
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateConversationRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Conversation'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ai/conversations/{conversationId}/messages:
+        get:
+            tags:
+                - AIService
+            description: ListMessages lists messages in a conversation
+            operationId: AIService_ListMessages
+            parameters:
+                - name: conversationId
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageSize
+                  in: query
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListMessagesResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - AIService
+            description: SendMessage sends a message and streams the AI response
+            operationId: AIService_SendMessage
+            parameters:
+                - name: conversationId
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SendMessageRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MessageChunk'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ai/providers:
+        get:
+            tags:
+                - AIService
+            description: ListProviders lists available LLM providers
+            operationId: AIService_ListProviders
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListProvidersResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - AIService
+            description: ConfigureProvider configures an LLM provider (admin only)
+            operationId: AIService_ConfigureProvider
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ConfigureProviderRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Provider'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /api/v1/attachments:
         get:
             tags:
@@ -2108,6 +2349,58 @@ components:
                     description: |-
                         Optional. The related memo. Refer to `Memo.name`.
                          Format: memos/{memo}
+        ConfigureProviderRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                displayName:
+                    type: string
+                apiKey:
+                    type: string
+                apiEndpoint:
+                    type: string
+                config:
+                    type: string
+                enabled:
+                    type: boolean
+        Conversation:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: int32
+                name:
+                    type: string
+                creatorId:
+                    type: integer
+                    format: int32
+                llmProvider:
+                    type: string
+                llmModel:
+                    type: string
+                systemPrompt:
+                    type: string
+                createdTime:
+                    type: string
+                    format: date-time
+                updatedTime:
+                    type: string
+                    format: date-time
+                messageCount:
+                    type: integer
+                    format: int32
+        CreateConversationRequest:
+            type: object
+            properties:
+                name:
+                    type: string
+                llmProvider:
+                    type: string
+                llmModel:
+                    type: string
+                systemPrompt:
+                    type: string
         CreateSessionRequest:
             type: object
             properties:
@@ -2420,6 +2713,15 @@ components:
                     type: integer
                     description: The total count of attachments (may be approximate).
                     format: int32
+        ListConversationsResponse:
+            type: object
+            properties:
+                conversations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Conversation'
+                nextPageToken:
+                    type: string
         ListIdentityProvidersResponse:
             type: object
             properties:
@@ -2493,6 +2795,22 @@ components:
                     description: |-
                         A token that can be sent as `page_token` to retrieve the next page.
                          If this field is omitted, there are no subsequent pages.
+        ListMessagesResponse:
+            type: object
+            properties:
+                messages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Message'
+                nextPageToken:
+                    type: string
+        ListProvidersResponse:
+            type: object
+            properties:
+                providers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Provider'
         ListShortcutsResponse:
             type: object
             properties:
@@ -2735,6 +3053,34 @@ components:
                 hasIncompleteTasks:
                     type: boolean
             description: Computed properties of a memo.
+        Message:
+            type: object
+            properties:
+                id:
+                    type: integer
+                    format: int32
+                conversationId:
+                    type: integer
+                    format: int32
+                role:
+                    type: string
+                content:
+                    type: string
+                tokens:
+                    type: integer
+                    format: int32
+                createdTime:
+                    type: string
+                    format: date-time
+        MessageChunk:
+            type: object
+            properties:
+                content:
+                    type: string
+                isFinal:
+                    type: boolean
+                message:
+                    $ref: '#/components/schemas/Message'
         OAuth2Config:
             type: object
             properties:
@@ -2754,6 +3100,23 @@ components:
                         type: string
                 fieldMapping:
                     $ref: '#/components/schemas/FieldMapping'
+        Provider:
+            type: object
+            properties:
+                name:
+                    type: string
+                displayName:
+                    type: string
+                apiEndpoint:
+                    type: string
+                availableModels:
+                    type: array
+                    items:
+                        type: string
+                enabled:
+                    type: boolean
+                configured:
+                    type: boolean
         Reaction:
             required:
                 - contentId
@@ -2786,6 +3149,14 @@ components:
                     type: string
                     description: Output only. The creation timestamp.
                     format: date-time
+        SendMessageRequest:
+            type: object
+            properties:
+                conversationId:
+                    type: integer
+                    format: int32
+                content:
+                    type: string
         SetMemoAttachmentsRequest:
             required:
                 - name
@@ -2868,6 +3239,16 @@ components:
             description: |-
                 S3 configuration for cloud storage backend.
                  Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/
+        UpdateConversationRequest:
+            type: object
+            properties:
+                conversationId:
+                    type: integer
+                    format: int32
+                name:
+                    type: string
+                systemPrompt:
+                    type: string
         UpsertMemoReactionRequest:
             required:
                 - name
@@ -3190,6 +3571,7 @@ components:
                     format: date-time
             description: UserWebhook represents a webhook owned by a user.
 tags:
+    - name: AIService
     - name: ActivityService
     - name: AttachmentService
     - name: AuthService

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/usememos/memos/internal/ai"
 	"github.com/usememos/memos/internal/profile"
 	"github.com/usememos/memos/plugin/markdown"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
@@ -32,11 +33,13 @@ type APIV1Service struct {
 	v1pb.UnimplementedShortcutServiceServer
 	v1pb.UnimplementedActivityServiceServer
 	v1pb.UnimplementedIdentityProviderServiceServer
+	v1pb.UnimplementedAIServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
 	Store           *store.Store
 	MarkdownService markdown.Service
+	AIManager       *ai.Manager
 
 	grpcServer *grpc.Server
 
@@ -49,11 +52,13 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
+	aiManager := ai.NewManager(store)
 	apiv1Service := &APIV1Service{
 		Secret:             secret,
 		Profile:            profile,
 		Store:              store,
 		MarkdownService:    markdownService,
+		AIManager:          aiManager,
 		grpcServer:         grpcServer,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
@@ -66,7 +71,15 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 	v1pb.RegisterShortcutServiceServer(grpcServer, apiv1Service)
 	v1pb.RegisterActivityServiceServer(grpcServer, apiv1Service)
 	v1pb.RegisterIdentityProviderServiceServer(grpcServer, apiv1Service)
+	v1pb.RegisterAIServiceServer(grpcServer, apiv1Service)
 	reflection.Register(grpcServer)
+	
+	// Initialize AI providers
+	if err := apiv1Service.initializeAIProviders(context.Background()); err != nil {
+		// Log error but don't fail startup
+		fmt.Printf("Warning: failed to initialize AI providers: %v\n", err)
+	}
+	
 	return apiv1Service
 }
 
@@ -116,6 +129,9 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	if err := v1pb.RegisterIdentityProviderServiceHandler(ctx, gwMux, conn); err != nil {
 		return err
 	}
+	if err := v1pb.RegisterAIServiceHandler(ctx, gwMux, conn); err != nil {
+		return err
+	}
 	gwGroup := echoServer.Group("")
 	gwGroup.Use(middleware.CORS())
 	handler := echo.WrapHandler(gwMux)
@@ -132,6 +148,48 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	}
 	wrappedGrpc := grpcweb.WrapServer(s.grpcServer, options...)
 	echoServer.Any("/memos.api.v1.*", echo.WrapHandler(wrappedGrpc))
+
+	return nil
+}
+
+// initializeAIProviders initializes AI providers from database configuration
+func (s *APIV1Service) initializeAIProviders(ctx context.Context) error {
+	// Get all provider configs from database
+	configs, err := s.Store.ListAIProviderConfigs(ctx, &store.FindAIProviderConfig{})
+	if err != nil {
+		return fmt.Errorf("failed to list provider configs: %w", err)
+	}
+
+	fmt.Printf("Found %d provider configs in database\n", len(configs))
+
+	// Register each enabled provider
+	for _, config := range configs {
+		fmt.Printf("Processing provider: %s (enabled=%v, hasAPIKey=%v)\n", config.Name, config.Enabled, config.APIKey != "")
+		
+		if !config.Enabled || config.APIKey == "" {
+			fmt.Printf("Skipping provider %s (not enabled or no API key)\n", config.Name)
+			continue
+		}
+
+		switch config.Name {
+		case "openai":
+			provider := ai.NewOpenAIProvider(config.APIKey, config.APIEndpoint)
+			s.AIManager.RegisterProvider(provider)
+			fmt.Printf("Registered OpenAI provider\n")
+		case "deepseek":
+			provider := ai.NewDeepseekProvider(config.APIKey)
+			s.AIManager.RegisterProvider(provider)
+			fmt.Printf("Registered Deepseek provider\n")
+		default:
+			fmt.Printf("Warning: unknown provider %s\n", config.Name)
+		}
+	}
+
+	registeredProviders := s.AIManager.ListProviders()
+	fmt.Printf("Total registered providers: %d\n", len(registeredProviders))
+	for _, p := range registeredProviders {
+		fmt.Printf("  - %s (models: %v)\n", p.Name(), p.GetModels())
+	}
 
 	return nil
 }

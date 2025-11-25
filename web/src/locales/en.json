@@ -6,6 +6,27 @@
     "github-repository": "GitHub Repo",
     "official-website": "Official Website"
   },
+  "ai": {
+    "title": "AI Chat",
+    "welcome": "Welcome to AI Chat",
+    "new-conversation": "New Conversation",
+    "no-conversations": "No conversations yet. Create one to get started!",
+    "no-providers-configured": "No AI providers configured. Please contact your administrator.",
+    "select-or-create-conversation": "Select a conversation from the sidebar or create a new one to start chatting.",
+    "messages": "messages",
+    "type-message": "Type your message...",
+    "create-conversation": "Create Conversation",
+    "create-conversation-description": "Choose an AI provider and model to start a new conversation.",
+    "conversation-name": "Conversation Name",
+    "conversation-name-placeholder": "My AI Conversation",
+    "provider": "Provider",
+    "select-provider": "Select provider",
+    "model": "Model",
+    "select-model": "Select model",
+    "system-prompt": "System Prompt",
+    "system-prompt-placeholder": "You are a helpful assistant...",
+    "confirm-delete-conversation": "Are you sure you want to delete this conversation?"
+  },
   "auth": {
     "create-your-account": "Create your account",
     "host-tip": "You are registering as the Site Host.",
@@ -103,7 +124,9 @@
     "version": "Version",
     "visibility": "Visibility",
     "yourself": "Yourself",
-    "more": "More"
+    "more": "More",
+    "optional": "Optional",
+    "loading": "Loading..."
   },
   "days": {
     "fri": "Fri",
