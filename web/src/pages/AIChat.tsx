@@ -11,9 +11,11 @@ import ChatInterface from "@/components/ChatInterface";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import CreateConversationDialog from "@/components/CreateConversationDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import useResponsiveWidth from "@/hooks/useResponsiveWidth";
 
 const AIChat = observer(() => {
   const t = useTranslate();
+  const { lg } = useResponsiveWidth();
   const [searchParams, setSearchParams] = useSearchParams();
   const conversationId = searchParams.get("c") ? parseInt(searchParams.get("c")!) : null;
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -76,7 +78,12 @@ const AIChat = observer(() => {
   return (
     <div className="w-full h-full flex overflow-hidden bg-background">
       {/* Sidebar */}
-      <div className="w-80 border-r flex flex-col bg-sidebar">
+      <div
+        className={cn(
+          "border-r flex flex-col bg-sidebar transition-all",
+          lg ? "w-72" : "w-56",
+        )}
+      >
         <div className="p-4 border-b bg-sidebar-accent">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold flex items-center gap-2">

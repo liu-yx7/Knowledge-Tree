@@ -84,7 +84,7 @@ const Navigation = observer((props: Props) => {
   };
 
   const navLinks: NavLinkItem[] = currentUser
-    ? [homeNavLink, aiChatNavLink, exploreNavLink, attachmentsNavLink, inboxNavLink]
+    ? [homeNavLink, exploreNavLink, aiChatNavLink, attachmentsNavLink, inboxNavLink]
     : [exploreNavLink, signInNavLink];
 
   return (
