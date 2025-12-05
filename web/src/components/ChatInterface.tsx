@@ -123,28 +123,103 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
   };
 
   const isExistingConversation = !!aiStore.currentConversation;
+  const isStartingPage = !aiStore.currentConversation && aiStore.messages.length === 0;
+
+  const renderInputArea = (centered: boolean = false) => (
+    <div className={cn(
+      "flex flex-col border rounded-2xl bg-background shadow-sm transition-colors focus-within:border-primary",
+      aiStore.isStreaming && "opacity-50 cursor-not-allowed"
+    )}>
+      <Textarea
+        ref={textareaRef}
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={t("ai.type-message")}
+        className="min-h-[60px] w-full resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 p-4"
+        rows={centered ? 4 : 3}
+        disabled={aiStore.isStreaming}
+      />
+      
+      <div className="flex items-center justify-between p-2 pl-3">
+        <div className="flex items-center gap-1">
+          <Select
+            value={selectedProvider}
+            onValueChange={handleProviderChange}
+            disabled={isExistingConversation || aiStore.isStreaming}
+          >
+            <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground data-[state=open]:bg-accent/50">
+              <BotIcon className="w-4 h-4" />
+              <SelectValue placeholder={t("ai.select-provider")} />
+            </SelectTrigger>
+            <SelectContent>
+              {availableProviders.map((p) => (
+                <SelectItem key={p.name} value={p.name}>
+                  {p.displayName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="w-px h-4 bg-border mx-1" />
+
+          <Select value="all" disabled={aiStore.isStreaming}>
+            <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground">
+              <DatabaseIcon className="w-4 h-4" />
+              <span className="text-xs">Source</span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Memos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled={aiStore.isStreaming}>
+            <PaperclipIcon className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <Button
+          onClick={handleSend}
+          disabled={!inputValue.trim() || aiStore.isStreaming || (!isExistingConversation && (!selectedProvider || !selectedModel))}
+          size="icon"
+          className="h-8 w-8 rounded-lg"
+        >
+          <SendIcon className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  if (isStartingPage && !aiStore.isLoadingMessages) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center h-full p-4">
+        <div className="w-full max-w-3xl flex flex-col gap-8 mb-20">
+          <div className="flex flex-col items-center gap-4">
+            <div className="p-4 rounded-3xl bg-muted/50">
+              <BotIcon className="w-12 h-12 text-primary" />
+            </div>
+            <h2 className="text-2xl font-semibold">{t("ai.title")}</h2>
+          </div>
+          {renderInputArea(true)}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full min-h-0">
       {/* Header */}
       {aiStore.currentConversation && (
-        <div className="px-6 py-4 border-b">
-          <h2 className="text-lg font-semibold">{aiStore.currentConversation.name}</h2>
+        <div className="px-6 py-4 border-b flex items-center justify-between bg-background z-10 shrink-0">
+          <h2 className="text-lg font-semibold truncate">{aiStore.currentConversation.name}</h2>
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 px-6 py-4 overflow-y-auto" ref={scrollRef}>
+      <div className="flex-1 px-6 py-4 overflow-y-auto min-h-0" ref={scrollRef}>
         {aiStore.isLoadingMessages ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">{t("common.loading")}</p>
-          </div>
-        ) : aiStore.messages.length === 0 && !aiStore.currentConversation ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold">{t("ai.welcome")}</h2>
-              <p className="text-muted-foreground">{t("ai.start-chatting")}</p>
-            </div>
           </div>
         ) : (
           <div className="space-y-6 max-w-4xl mx-auto">
@@ -240,70 +315,9 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
       </div>
 
       {/* Input */}
-      <div className="px-6 py-4 border-t bg-background">
+      <div className="px-6 py-4 border-t bg-background shrink-0">
         <div className="max-w-4xl mx-auto">
-          <div className={cn(
-            "flex flex-col border rounded-2xl bg-background shadow-sm transition-colors focus-within:border-primary",
-            aiStore.isStreaming && "opacity-50 cursor-not-allowed"
-          )}>
-            <Textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t("ai.type-message")}
-              className="min-h-[60px] w-full resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 p-4"
-              rows={3}
-              disabled={aiStore.isStreaming}
-            />
-            
-            <div className="flex items-center justify-between p-2 pl-3">
-              <div className="flex items-center gap-1">
-                <Select
-                  value={selectedProvider}
-                  onValueChange={handleProviderChange}
-                  disabled={isExistingConversation || aiStore.isStreaming}
-                >
-                  <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground data-[state=open]:bg-accent/50">
-                    <BotIcon className="w-4 h-4" />
-                    <SelectValue placeholder={t("ai.select-provider")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableProviders.map((p) => (
-                      <SelectItem key={p.name} value={p.name}>
-                        {p.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <div className="w-px h-4 bg-border mx-1" />
-
-                <Select value="all" disabled={aiStore.isStreaming}>
-                  <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground">
-                    <DatabaseIcon className="w-4 h-4" />
-                    <span className="text-xs">Source</span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Memos</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled={aiStore.isStreaming}>
-                  <PaperclipIcon className="w-4 h-4" />
-                </Button>
-              </div>
-
-              <Button
-                onClick={handleSend}
-                disabled={!inputValue.trim() || aiStore.isStreaming || (!isExistingConversation && (!selectedProvider || !selectedModel))}
-                size="icon"
-                className="h-8 w-8 rounded-lg"
-              >
-                <SendIcon className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
+          {renderInputArea(false)}
         </div>
       </div>
     </div>
