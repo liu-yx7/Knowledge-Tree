@@ -24,7 +24,7 @@ func (d *DB) CreateAIConversation(ctx context.Context, create *store.AIConversat
 		return nil, err
 	}
 	id := int32(rawID)
-	
+
 	// Get the created conversation
 	conversation, err := d.GetAIConversation(ctx, &store.FindAIConversation{ID: &id})
 	if err != nil {
@@ -152,7 +152,7 @@ func (d *DB) CreateAIMessage(ctx context.Context, create *store.AIMessage) (*sto
 		return nil, err
 	}
 	id := int32(rawID)
-	
+
 	message, err := d.GetAIMessage(ctx, &store.FindAIMessage{ID: &id})
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (d *DB) CreateAIProviderConfig(ctx context.Context, create *store.AIProvide
 		return nil, err
 	}
 	id := int32(rawID)
-	
+
 	config, err := d.GetAIProviderConfig(ctx, &store.FindAIProviderConfig{ID: &id})
 	if err != nil {
 		return nil, err

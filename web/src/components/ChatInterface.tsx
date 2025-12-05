@@ -1,6 +1,7 @@
-import { SendIcon } from "lucide-react";
+import { CopyIcon, SendIcon, PaperclipIcon, DatabaseIcon, BotIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,6 +16,7 @@ import { aiStore } from "@/store";
 import { useTranslate } from "@/utils/i18n";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CodeBlock } from "@/components/MemoContent/CodeBlock";
 
 interface Props {
   onConversationCreated?: (id: number) => void;
@@ -41,7 +43,11 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
       const firstProvider = availableProviders[0];
       setSelectedProvider(firstProvider.name);
       if (firstProvider.availableModels.length > 0) {
-        setSelectedModel(firstProvider.availableModels[0]);
+        if (firstProvider.availableModels.includes("deepseek-chat")) {
+          setSelectedModel("deepseek-chat");
+        } else {
+          setSelectedModel(firstProvider.availableModels[0]);
+        }
       }
     }
   }, [aiStore.currentConversation, availableProviders]);
@@ -63,7 +69,7 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
       // If no conversation exists, create one with the first message
       if (!aiStore.currentConversation) {
         if (!selectedProvider || !selectedModel) {
-          console.error("No provider or model selected");
+          toast.error(t("ai.select-provider-model-first"));
           return;
         }
 
@@ -86,9 +92,15 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
       }
 
       await aiStore.sendMessage(message);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to send message:", error);
+      toast.error(error.details || error.message || t("common.error"));
     }
+  };
+
+  const handleCopyMessage = (content: string) => {
+    navigator.clipboard.writeText(content);
+    toast.success(t("message.copied"));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -102,11 +114,14 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
     setSelectedProvider(value);
     const provider = availableProviders.find((p) => p.name === value);
     if (provider && provider.availableModels.length > 0) {
-      setSelectedModel(provider.availableModels[0]);
+      if (provider.availableModels.includes("deepseek-chat")) {
+        setSelectedModel("deepseek-chat");
+      } else {
+        setSelectedModel(provider.availableModels[0]);
+      }
     }
   };
 
-  const selectedProviderData = availableProviders.find((p) => p.name === selectedProvider);
   const isExistingConversation = !!aiStore.currentConversation;
 
   return (
@@ -115,9 +130,6 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
       {aiStore.currentConversation && (
         <div className="px-6 py-4 border-b">
           <h2 className="text-lg font-semibold">{aiStore.currentConversation.name}</h2>
-          <p className="text-sm text-muted-foreground">
-            {aiStore.currentConversation.llmProvider} · {aiStore.currentConversation.llmModel}
-          </p>
         </div>
       )}
 
@@ -140,13 +152,13 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
               <div
                 key={`${message.id}-${index}`}
                 className={cn(
-                  "flex gap-4",
+                  "flex gap-4 group",
                   message.role === "user" ? "justify-end" : "justify-start"
                 )}
               >
                 <div
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-3",
+                    "max-w-[80%] rounded-2xl px-4 py-3 relative",
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"
@@ -154,12 +166,35 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
                 >
                   {message.role === "assistant" ? (
                     <div className="prose prose-sm dark:prose-invert max-w-none">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          pre: CodeBlock,
+                          a: ({ href, children, ...props }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                              {children}
+                            </a>
+                          ),
+                        }}
+                      >
                         {message.content}
                       </ReactMarkdown>
                     </div>
                   ) : (
                     <p className="whitespace-pre-wrap">{message.content}</p>
+                  )}
+                  
+                  {message.role === "assistant" && (
+                    <div className="absolute -bottom-6 left-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleCopyMessage(message.content)}
+                      >
+                        <CopyIcon className="w-3 h-3" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -170,7 +205,17 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
               <div className="flex gap-4 justify-start">
                 <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-muted">
                   <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        pre: CodeBlock,
+                        a: ({ href, children, ...props }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                            {children}
+                          </a>
+                        ),
+                      }}
+                    >
                       {aiStore.streamingContent}
                     </ReactMarkdown>
                   </div>
@@ -196,69 +241,68 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
 
       {/* Input */}
       <div className="px-6 py-4 border-t bg-background">
-        <div className="max-w-4xl mx-auto space-y-3">
-          {/* Provider selection - always visible, disabled once conversation exists */}
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{t("ai.model")}:</span>
-            <Select
-              value={selectedProvider}
-              onValueChange={handleProviderChange}
-              disabled={isExistingConversation || aiStore.isStreaming}
-            >
-              <SelectTrigger className="h-8 w-[160px] text-xs">
-                <SelectValue placeholder={t("ai.select-provider")} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableProviders.map((p) => (
-                  <SelectItem key={p.name} value={p.name}>
-                    {p.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedModel}
-              onValueChange={setSelectedModel}
-              disabled={isExistingConversation || !selectedProvider || aiStore.isStreaming}
-            >
-              <SelectTrigger className="h-8 w-[180px] text-xs">
-                <SelectValue placeholder={t("ai.select-model")} />
-              </SelectTrigger>
-              <SelectContent>
-                {selectedProviderData?.availableModels.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {isExistingConversation && (
-              <span className="text-xs text-muted-foreground italic">
-                (locked for this conversation)
-              </span>
-            )}
-          </div>
-
-          {/* Input area */}
-          <div className="flex gap-2">
+        <div className="max-w-4xl mx-auto">
+          <div className={cn(
+            "flex flex-col border rounded-2xl bg-background shadow-sm transition-colors focus-within:border-primary",
+            aiStore.isStreaming && "opacity-50 cursor-not-allowed"
+          )}>
             <Textarea
               ref={textareaRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t("ai.type-message")}
-              className="resize-none"
+              className="min-h-[60px] w-full resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 p-4"
               rows={3}
               disabled={aiStore.isStreaming}
             />
-            <Button
-              onClick={handleSend}
-              disabled={!inputValue.trim() || aiStore.isStreaming || (!isExistingConversation && (!selectedProvider || !selectedModel))}
-              size="icon"
-              className="h-auto"
-            >
-              <SendIcon className="w-5 h-5" />
-            </Button>
+            
+            <div className="flex items-center justify-between p-2 pl-3">
+              <div className="flex items-center gap-1">
+                <Select
+                  value={selectedProvider}
+                  onValueChange={handleProviderChange}
+                  disabled={isExistingConversation || aiStore.isStreaming}
+                >
+                  <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground data-[state=open]:bg-accent/50">
+                    <BotIcon className="w-4 h-4" />
+                    <SelectValue placeholder={t("ai.select-provider")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableProviders.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="w-px h-4 bg-border mx-1" />
+
+                <Select value="all" disabled={aiStore.isStreaming}>
+                  <SelectTrigger className="h-8 border-0 shadow-none hover:bg-accent/50 w-auto gap-2 px-2 text-muted-foreground">
+                    <DatabaseIcon className="w-4 h-4" />
+                    <span className="text-xs">Source</span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Memos</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" disabled={aiStore.isStreaming}>
+                  <PaperclipIcon className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <Button
+                onClick={handleSend}
+                disabled={!inputValue.trim() || aiStore.isStreaming || (!isExistingConversation && (!selectedProvider || !selectedModel))}
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+              >
+                <SendIcon className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>

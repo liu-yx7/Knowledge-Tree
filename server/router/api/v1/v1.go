@@ -73,13 +73,13 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 	v1pb.RegisterIdentityProviderServiceServer(grpcServer, apiv1Service)
 	v1pb.RegisterAIServiceServer(grpcServer, apiv1Service)
 	reflection.Register(grpcServer)
-	
+
 	// Initialize AI providers
 	if err := apiv1Service.initializeAIProviders(context.Background()); err != nil {
 		// Log error but don't fail startup
 		fmt.Printf("Warning: failed to initialize AI providers: %v\n", err)
 	}
-	
+
 	return apiv1Service
 }
 
@@ -165,7 +165,7 @@ func (s *APIV1Service) initializeAIProviders(ctx context.Context) error {
 	// Register each enabled provider
 	for _, config := range configs {
 		fmt.Printf("Processing provider: %s (enabled=%v, hasAPIKey=%v)\n", config.Name, config.Enabled, config.APIKey != "")
-		
+
 		if !config.Enabled || config.APIKey == "" {
 			fmt.Printf("Skipping provider %s (not enabled or no API key)\n", config.Name)
 			continue

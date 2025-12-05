@@ -52,7 +52,7 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	s.echoServer = echoServer
 
 	instanceBasicSetting, err := s.getOrUpsertInstanceBasicSetting(ctx)
-	if (err != nil) {
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to get instance basic setting")
 	}
 

@@ -117,7 +117,7 @@ web/                 # Frontend React application
   ├── src/
   │   ├── components/ # React components
   │   ├── pages/     # Page-level components
-  │   ├── store/     # MobX state management
+  │   ├── store/     #en MobX state managemt
   │   ├── router/    # React Router configuration
   │   ├── locales/   # i18n translation files
   │   ├── hooks/     # Custom React hooks

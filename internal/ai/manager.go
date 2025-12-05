@@ -34,7 +34,7 @@ func (m *Manager) RegisterProvider(provider Provider) {
 func (m *Manager) GetProvider(name string) (Provider, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	provider, ok := m.providers[name]
 	if !ok {
 		return nil, fmt.Errorf("provider %s not found", name)
@@ -46,7 +46,7 @@ func (m *Manager) GetProvider(name string) (Provider, error) {
 func (m *Manager) ListProviders() []Provider {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	providers := make([]Provider, 0, len(m.providers))
 	for _, provider := range m.providers {
 		providers = append(providers, provider)
