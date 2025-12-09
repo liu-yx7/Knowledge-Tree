@@ -1,4 +1,5 @@
 import { observer } from "mobx-react-lite";
+import EmbedAIChat from "@/components/EmbedAIChat";
 import { MemoRenderContext } from "@/components/MasonryView";
 import MemoView from "@/components/MemoView";
 import PagedMemoList from "@/components/PagedMemoList";
@@ -33,6 +34,7 @@ const Home = observer(() => {
         orderBy={orderBy}
         filter={memoFilter}
       />
+      <EmbedAIChat />
     </div>
   );
 });

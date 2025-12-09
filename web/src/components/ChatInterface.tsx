@@ -20,9 +20,11 @@ import { CodeBlock } from "@/components/MemoContent/CodeBlock";
 
 interface Props {
   onConversationCreated?: (id: number) => void;
+  className?: string;
+  hideHeader?: boolean;
 }
 
-const ChatInterface = observer(({ onConversationCreated }: Props) => {
+const ChatInterface = observer(({ onConversationCreated, className, hideHeader }: Props) => {
   const t = useTranslate();
   const [inputValue, setInputValue] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("");
@@ -207,9 +209,9 @@ const ChatInterface = observer(({ onConversationCreated }: Props) => {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full min-h-0">
+    <div className={cn("flex-1 flex flex-col h-full min-h-0", className)}>
       {/* Header */}
-      {aiStore.currentConversation && (
+      {aiStore.currentConversation && !hideHeader && (
         <div className="px-6 py-4 border-b flex items-center justify-between bg-background z-10 shrink-0">
           <h2 className="text-lg font-semibold truncate">{aiStore.currentConversation.name}</h2>
         </div>
