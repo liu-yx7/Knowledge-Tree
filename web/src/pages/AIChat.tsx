@@ -76,7 +76,7 @@ const AIChat = observer(() => {
   const availableProviders = aiStore.getAvailableProviders();
 
   return (
-    <div className="w-full h-full flex overflow-hidden bg-background">
+    <div className="w-full h-[100dvh] flex overflow-hidden bg-background">
       {/* Sidebar */}
       <div
         className={cn(
