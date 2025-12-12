@@ -4,12 +4,13 @@ import { useMemo } from "react";
 import { matchPath, Outlet, useLocation } from "react-router-dom";
 import { MemoExplorer, MemoExplorerContext, MemoExplorerDrawer } from "@/components/MemoExplorer";
 import MobileHeader from "@/components/MobileHeader";
+import EmbedAIChat from "@/components/EmbedAIChat";
 import useCurrentUser from "@/hooks/useCurrentUser";
 import { useFilteredMemoStats } from "@/hooks/useFilteredMemoStats";
 import useResponsiveWidth from "@/hooks/useResponsiveWidth";
 import { cn } from "@/lib/utils";
 import { Routes } from "@/router";
-import { userStore } from "@/store";
+import { aiStore, userStore } from "@/store";
 import { extractUserIdFromName } from "@/store/common";
 import { State } from "@/types/proto/api/v1/common";
 import { Visibility } from "@/types/proto/api/v1/memo_service";
@@ -65,6 +66,7 @@ const MainLayout = observer(() => {
 
   // Fetch stats using the same filter as the memo list
   const { statistics, tags } = useFilteredMemoStats(filter, state);
+  const { isChatOpen, chatViewMode } = aiStore;
 
   return (
     <section className="@container w-full min-h-full flex flex-col justify-start items-center">
@@ -78,11 +80,18 @@ const MainLayout = observer(() => {
           <MemoExplorer className={cn("px-3 py-6")} context={context} statisticsData={statistics} tagCount={tags} />
         </div>
       )}
-      <div className={cn("w-full min-h-full", lg ? "pl-72" : md ? "pl-56" : "")}>
+      <div
+        className={cn(
+          "w-full min-h-full transition-all duration-300 ease-in-out",
+          lg ? "pl-72" : md ? "pl-56" : "",
+          isChatOpen && chatViewMode === "sidebar" ? "pr-[400px]" : ""
+        )}
+      >
         <div className={cn("w-full mx-auto px-4 sm:px-6 md:pt-6 pb-8")}>
           <Outlet />
         </div>
       </div>
+      <EmbedAIChat />
     </section>
   );
 });

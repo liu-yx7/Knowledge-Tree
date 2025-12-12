@@ -11,9 +11,19 @@ class AIStore {
   streamingContent: string = "";
   isLoadingConversations: boolean = false;
   isLoadingMessages: boolean = false;
+  isChatOpen: boolean = false;
+  chatViewMode: "floating" | "sidebar" = "floating";
 
   constructor() {
     makeAutoObservable(this);
+  }
+
+  setChatOpen(open: boolean) {
+    this.isChatOpen = open;
+  }
+
+  setChatViewMode(mode: "floating" | "sidebar") {
+    this.chatViewMode = mode;
   }
 
   async fetchProviders() {
@@ -119,16 +129,17 @@ class AIStore {
 
       for await (const chunk of stream) {
         if (chunk.isFinal && chunk.message) {
+          const finalMessage = chunk.message;
           runInAction(() => {
             // Replace user message with saved one (with ID)
             const userMsgIndex = this.messages.findIndex((m) => m.id === 0 && m.role === "user");
             if (userMsgIndex >= 0) {
               this.messages[userMsgIndex] = {
                 ...this.messages[userMsgIndex],
-                id: chunk.message.id - 1, // Approximate, backend should return user message too
+                id: finalMessage.id - 1, // Approximate, backend should return user message too
               };
             }
-            this.messages.push(chunk.message);
+            this.messages.push(finalMessage);
             this.streamingContent = "";
             this.isStreaming = false;
           });

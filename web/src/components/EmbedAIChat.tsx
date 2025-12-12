@@ -14,22 +14,25 @@ import ChatInterface from "./ChatInterface";
 
 const EmbedAIChat = observer(() => {
   const t = useTranslate();
-  const [isOpen, setIsOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"floating" | "sidebar">("floating");
+  const { isChatOpen, chatViewMode } = aiStore;
 
   useEffect(() => {
-    if (isOpen) {
+    if (isChatOpen) {
       aiStore.fetchProviders();
       aiStore.fetchConversations();
     }
-  }, [isOpen]);
+  }, [isChatOpen]);
 
   const handleNewChat = () => {
     aiStore.clearCurrentConversation();
   };
 
   const toggleViewMode = () => {
-    setViewMode((prev) => (prev === "floating" ? "sidebar" : "floating"));
+    aiStore.setChatViewMode(chatViewMode === "floating" ? "sidebar" : "floating");
+  };
+
+  const handleOpenChange = (open: boolean) => {
+    aiStore.setChatOpen(open);
   };
 
   const renderHeader = () => (
@@ -43,10 +46,10 @@ const EmbedAIChat = observer(() => {
           variant="ghost"
           size="icon"
           onClick={toggleViewMode}
-          title={viewMode === "floating" ? "Switch to sidebar" : "Switch to floating"}
+          title={chatViewMode === "floating" ? "Switch to sidebar" : "Switch to floating"}
           className="h-7 w-7"
         >
-          {viewMode === "floating" ? (
+          {chatViewMode === "floating" ? (
             <PanelRight className="w-4 h-4" />
           ) : (
             <AppWindow className="w-4 h-4" />
@@ -64,7 +67,7 @@ const EmbedAIChat = observer(() => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setIsOpen(false)}
+          onClick={() => handleOpenChange(false)}
           title={t("common.close")}
           className="h-7 w-7"
         >
@@ -83,25 +86,25 @@ const EmbedAIChat = observer(() => {
     </>
   );
 
-  if (viewMode === "sidebar") {
+  if (chatViewMode === "sidebar") {
     return (
       <>
         <Button
           className={cn(
             "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-            isOpen
+            isChatOpen
               ? "opacity-0 scale-50 pointer-events-none"
               : "opacity-100 scale-100"
           )}
           size="icon"
-          onClick={() => setIsOpen(true)}
+          onClick={() => handleOpenChange(true)}
         >
           <BotIcon className="h-8 w-8" />
         </Button>
         <div
           className={cn(
             "fixed top-0 right-0 z-50 h-full w-[400px] bg-background shadow-2xl border-l transition-transform duration-300 ease-in-out flex flex-col",
-            isOpen ? "translate-x-0" : "translate-x-full"
+            isChatOpen ? "translate-x-0" : "translate-x-full"
           )}
         >
           {renderContent()}
@@ -111,12 +114,12 @@ const EmbedAIChat = observer(() => {
   }
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isChatOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           className={cn(
             "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
-            isOpen
+            isChatOpen
               ? "opacity-0 scale-50 pointer-events-none"
               : "opacity-100 scale-100"
           )}
