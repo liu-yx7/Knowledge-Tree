@@ -195,7 +195,7 @@ const ChatInterface = observer(({ onConversationCreated, className, hideHeader }
   if (isStartingPage && !aiStore.isLoadingMessages) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-full p-4">
-        <div className="w-full max-w-3xl flex flex-col gap-8 mb-20">
+        <div className="w-full max-w-3xl flex flex-col gap-8">
           <div className="flex flex-col items-center gap-4">
             <div className="p-4 rounded-3xl bg-muted/50">
               <BotIcon className="w-12 h-12 text-primary" />
