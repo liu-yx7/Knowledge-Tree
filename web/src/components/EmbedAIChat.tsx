@@ -1,4 +1,4 @@
-import { BotIcon, PlusIcon } from "lucide-react";
+import { BotIcon, MinusIcon, PlusIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -45,21 +45,33 @@ const EmbedAIChat = observer(() => {
         className="w-[400px] h-[600px] p-0 flex flex-col gap-0 overflow-hidden rounded-2xl shadow-2xl border-border origin-bottom-right data-[state=open]:duration-500 data-[state=closed]:duration-300 data-[state=open]:zoom-in-50 data-[state=closed]:zoom-out-50" 
         side="top" 
         align="end"
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <div className="px-4 py-3 border-b flex flex-row items-center justify-between bg-muted/30">
           <div className="flex items-center gap-2 font-medium">
             <BotIcon className="w-4 h-4" />
             {t("ai.title")}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleNewChat}
-            title={t("ai.new-conversation")}
-            className="h-7 w-7"
-          >
-            <PlusIcon className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleNewChat}
+              title={t("ai.new-conversation")}
+              className="h-7 w-7"
+            >
+              <PlusIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsOpen(false)}
+              title={t("common.close")}
+              className="h-7 w-7"
+            >
+              <MinusIcon className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
         <div className="flex-1 min-h-0 bg-background">
           <ChatInterface 
