@@ -34,6 +34,7 @@ type APIV1Service struct {
 	v1pb.UnimplementedActivityServiceServer
 	v1pb.UnimplementedIdentityProviderServiceServer
 	v1pb.UnimplementedAIServiceServer
+	v1pb.UnimplementedSubscriptionServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
@@ -72,6 +73,7 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 	v1pb.RegisterActivityServiceServer(grpcServer, apiv1Service)
 	v1pb.RegisterIdentityProviderServiceServer(grpcServer, apiv1Service)
 	v1pb.RegisterAIServiceServer(grpcServer, apiv1Service)
+	v1pb.RegisterSubscriptionServiceServer(grpcServer, apiv1Service)
 	reflection.Register(grpcServer)
 
 	// Initialize AI providers
@@ -130,6 +132,9 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 		return err
 	}
 	if err := v1pb.RegisterAIServiceHandler(ctx, gwMux, conn); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterSubscriptionServiceHandler(ctx, gwMux, conn); err != nil {
 		return err
 	}
 	gwGroup := echoServer.Group("")

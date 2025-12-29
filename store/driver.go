@@ -90,4 +90,10 @@ type Driver interface {
 	ListAIProviderConfigs(ctx context.Context, find *FindAIProviderConfig) ([]*AIProviderConfig, error)
 	UpdateAIProviderConfig(ctx context.Context, update *UpdateAIProviderConfig) error
 	DeleteAIProviderConfig(ctx context.Context, delete *DeleteAIProviderConfig) error
+
+	// Subscription model related methods.
+	CreateSubscription(ctx context.Context, create *Subscription) (*Subscription, error)
+	ListSubscriptions(ctx context.Context, find *FindSubscription) ([]*Subscription, error)
+	DeleteSubscription(ctx context.Context, delete *DeleteSubscription) error
+	GetSubscriptionCounts(ctx context.Context, userID int32) (*SubscriptionCounts, error)
 }

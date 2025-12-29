@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/api/resource.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/v1";
+
+service SubscriptionService {
+  // Follow a user.
+  rpc Follow(FollowRequest) returns (Subscription) {
+    option (google.api.http) = {
+      post: "/api/v1/{name=users/*}:follow"
+      body: "*"
+    };
+  }
+
+  // Unfollow a user.
+  rpc Unfollow(UnfollowRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/{name=users/*}:unfollow"
+      body: "*"
+    };
+  }
+
+  // Get subscription status between current user and target user.
+  rpc GetSubscriptionStatus(GetSubscriptionStatusRequest) returns (SubscriptionStatus) {
+    option (google.api.http) = {get: "/api/v1/{name=users/*}/subscription"};
+  }
+
+  // List users the specified user is following.
+  rpc ListFollowing(ListFollowingRequest) returns (ListFollowingResponse) {
+    option (google.api.http) = {get: "/api/v1/{parent=users/*}/following"};
+  }
+
+  // List users who follow the specified user.
+  rpc ListFollowers(ListFollowersRequest) returns (ListFollowersResponse) {
+    option (google.api.http) = {get: "/api/v1/{parent=users/*}/followers"};
+  }
+
+  // Get subscription counts for a user.
+  rpc GetSubscriptionCounts(GetSubscriptionCountsRequest) returns (SubscriptionCounts) {
+    option (google.api.http) = {get: "/api/v1/{name=users/*}/subscriptionCounts"};
+  }
+}
+
+// Subscription represents a follow relationship.
+message Subscription {
+  option (google.api.resource) = {
+    type: "memos.api.v1/Subscription"
+    pattern: "users/{user}/subscriptions/{subscription}"
+  };
+
+  // The resource name.
+  string name = 1 [(google.api.field_behavior) = IDENTIFIER];
+
+  // The user being followed.
+  string following_user = 2 [(google.api.resource_reference) = {type: "memos.api.v1/User"}];
+
+  // The creation timestamp.
+  google.protobuf.Timestamp create_time = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message FollowRequest {
+  // The user to follow.
+  // Format: users/{user}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+}
+
+message UnfollowRequest {
+  // The user to unfollow.
+  // Format: users/{user}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+}
+
+message GetSubscriptionStatusRequest {
+  // The user to check subscription status for.
+  // Format: users/{user}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+}
+
+message SubscriptionStatus {
+  // Whether the current user is following the target user.
+  bool is_following = 1;
+
+  // The subscription details if following.
+  Subscription subscription = 2;
+}
+
+message ListFollowingRequest {
+  // The user whose following list to retrieve.
+  // Format: users/{user}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListFollowingResponse {
+  // List of users being followed.
+  repeated FollowedUser following = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+message FollowedUser {
+  // The user resource name.
+  string user = 1 [(google.api.resource_reference) = {type: "memos.api.v1/User"}];
+
+  // When the follow relationship was created.
+  google.protobuf.Timestamp create_time = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListFollowersRequest {
+  // The user whose followers to list.
+  // Format: users/{user}
+  string parent = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+
+  int32 page_size = 2 [(google.api.field_behavior) = OPTIONAL];
+  string page_token = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListFollowersResponse {
+  // List of followers.
+  repeated Follower followers = 1;
+  string next_page_token = 2;
+  int32 total_size = 3;
+}
+
+message Follower {
+  // The follower user resource.
+  string user = 1 [(google.api.resource_reference) = {type: "memos.api.v1/User"}];
+
+  // When the follow relationship was created.
+  google.protobuf.Timestamp create_time = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message GetSubscriptionCountsRequest {
+  // The user to get subscription counts for.
+  // Format: users/{user}
+  string name = 1 [
+    (google.api.field_behavior) = REQUIRED,
+    (google.api.resource_reference) = {type: "memos.api.v1/User"}
+  ];
+}
+
+message SubscriptionCounts {
+  // Number of followers.
+  int32 follower_count = 1;
+
+  // Number of users being followed.
+  int32 following_count = 2;
+}

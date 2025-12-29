@@ -486,6 +486,17 @@
       "week-start-day": "Week start day"
     }
   },
+  "subscription": {
+    "follow": "Follow",
+    "unfollow": "Unfollow",
+    "followed": "Followed successfully",
+    "unfollowed": "Unfollowed successfully",
+    "error": "Failed to update subscription",
+    "followers": "Followers",
+    "following": "Following",
+    "no-followers": "No followers yet",
+    "no-following": "Not following anyone yet"
+  },
   "tag": {
     "all-tags": "All Tags",
     "create-tag": "Create Tag",

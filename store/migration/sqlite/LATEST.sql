@@ -173,3 +173,17 @@ CREATE TABLE ai_provider_config (
 
 CREATE INDEX idx_ai_provider_config_name ON ai_provider_config(name);
 CREATE INDEX idx_ai_provider_config_enabled ON ai_provider_config(enabled);
+
+-- subscription table for user follow relationships
+CREATE TABLE subscription (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_id INTEGER NOT NULL,
+    following_id INTEGER NOT NULL,
+    created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
+    UNIQUE(follower_id, following_id),
+    FOREIGN KEY (follower_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (following_id) REFERENCES user(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_subscription_follower_id ON subscription(follower_id);
+CREATE INDEX idx_subscription_following_id ON subscription(following_id);

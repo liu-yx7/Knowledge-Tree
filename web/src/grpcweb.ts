@@ -7,6 +7,7 @@ import { IdentityProviderServiceDefinition } from "./types/proto/api/v1/idp_serv
 import { InstanceServiceDefinition } from "./types/proto/api/v1/instance_service";
 import { MemoServiceDefinition } from "./types/proto/api/v1/memo_service";
 import { ShortcutServiceDefinition } from "./types/proto/api/v1/shortcut_service";
+import { SubscriptionServiceDefinition } from "./types/proto/api/v1/subscription_service";
 import { UserServiceDefinition } from "./types/proto/api/v1/user_service";
 
 const channel = createChannel(
@@ -35,3 +36,5 @@ export const activityServiceClient = clientFactory.create(ActivityServiceDefinit
 export const identityProviderServiceClient = clientFactory.create(IdentityProviderServiceDefinition, channel);
 
 export const aiServiceClient = clientFactory.create(AIServiceDefinition, channel);
+
+export const subscriptionServiceClient = clientFactory.create(SubscriptionServiceDefinition, channel);

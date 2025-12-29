@@ -51,6 +51,7 @@ import instanceStore from "./instance";
 import memoStore from "./memo";
 // Client State Stores
 import memoFilterStore from "./memoFilter";
+import subscriptionStore from "./subscription";
 import userStore from "./user";
 import viewStore from "./view";
 
@@ -86,6 +87,7 @@ export {
   instanceStore,
   attachmentStore,
   aiStore,
+  subscriptionStore,
   // Client state stores
   memoFilterStore,
   viewStore,
@@ -102,6 +104,7 @@ export const stores = {
     instance: instanceStore,
     attachment: attachmentStore,
     ai: aiStore,
+    subscription: subscriptionStore,
   },
 
   // Client state
