@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  # Python protobuf
+  - plugin: buf.build/protocolbuffers/python
+    out: ../src/proto
+  # Python gRPC
+  - plugin: buf.build/grpc/python
+    out: ../src/proto

@@ -465,7 +465,7 @@ class JWTValidationError(Exception):
 @dataclass
 class AccessTokenClaims:
     """Claims from a validated access token.
-    
+
     Matches Go struct: server/auth/token.go:AccessTokenClaims
     """
 
@@ -479,7 +479,7 @@ class AccessTokenClaims:
 
 def validate_access_token(token: str) -> AccessTokenClaims:
     """Validate a JWT access token and return claims.
-    
+
     Validation rules (must match Go backend):
     1. Algorithm must be HS256
     2. Key ID (kid) in header must be "v1"
@@ -487,13 +487,13 @@ def validate_access_token(token: str) -> AccessTokenClaims:
     4. Audience must contain "user.access-token"
     5. Token must not be expired
     6. Token type must be "access"
-    
+
     Args:
         token: The JWT token string (without "Bearer " prefix)
-        
+
     Returns:
         AccessTokenClaims with user information
-        
+
     Raises:
         JWTValidationError: If token is invalid
     """
@@ -502,7 +502,7 @@ def validate_access_token(token: str) -> AccessTokenClaims:
     try:
         # First, decode header without verification to check kid
         unverified_header = jwt.get_unverified_header(token)
-        
+
         # Validate key ID (matches Go: verifyJWTKeyFunc)
         kid = unverified_header.get("kid")
         if kid != settings.jwt_key_id:
@@ -569,7 +569,7 @@ def validate_access_token(token: str) -> AccessTokenClaims:
 
 def is_personal_access_token(token: str) -> bool:
     """Check if token is a Personal Access Token (PAT).
-    
+
     PATs start with 'memos_pat_' prefix.
     """
     return token.startswith("memos_pat_")
@@ -617,12 +617,12 @@ def extract_bearer_token(metadata: tuple[tuple[str, str], ...]) -> str | None:
 
 async def validate_pat_with_go_backend(token: str) -> AccessTokenClaims:
     """Validate PAT by calling Go backend.
-    
+
     Since PATs are stored in the Go backend's database, we need to
     call the Go backend to validate them.
     """
     settings = get_settings()
-    
+
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
@@ -630,7 +630,7 @@ async def validate_pat_with_go_backend(token: str) -> AccessTokenClaims:
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=5.0,
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
                 return AccessTokenClaims(
@@ -643,14 +643,14 @@ async def validate_pat_with_go_backend(token: str) -> AccessTokenClaims:
                 )
             else:
                 raise JWTValidationError("Invalid Personal Access Token")
-                
+
         except httpx.RequestError as e:
             raise JWTValidationError(f"Cannot validate PAT: {str(e)}")
 
 
 class AuthInterceptor(grpc.aio.ServerInterceptor):
     """gRPC server interceptor for authentication.
-    
+
     This interceptor:
     1. Extracts the Authorization header from metadata
     2. Validates JWT tokens locally or PATs via Go backend
@@ -665,7 +665,7 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
     ) -> Any:
         """Intercept incoming RPC calls for authentication."""
         method = handler_call_details.method
-        
+
         # Skip auth for public methods
         if method in PUBLIC_METHODS:
             return await continuation(handler_call_details)
@@ -673,7 +673,7 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
         # Extract token from metadata
         metadata = dict(handler_call_details.invocation_metadata or [])
         auth_header = metadata.get("authorization", "")
-        
+
         token = None
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:]
@@ -715,10 +715,10 @@ class AuthInterceptor(grpc.aio.ServerInterceptor):
 
 class AuthContext:
     """Context holder for authenticated user information.
-    
+
     Used to pass user claims through the gRPC context.
     """
-    
+
     _claims_key = "auth_claims"
 
     @classmethod
@@ -852,7 +852,7 @@ class RowStatus(str, Enum):
 
 class Conversation(Base):
     """AI conversation model.
-    
+
     Matches Go struct: store/ai_conversation.go:AIConversation
     """
 
@@ -867,7 +867,7 @@ class Conversation(Base):
     row_status: Mapped[RowStatus] = mapped_column(String(16), nullable=False, default=RowStatus.NORMAL)
     model: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="")
-    
+
     # RAG settings for this conversation
     rag_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     system_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -913,7 +913,7 @@ class MessageRole(str, Enum):
 
 class Message(Base):
     """AI message model.
-    
+
     Matches Go struct: store/ai_message.go:AIMessage
     """
 
@@ -930,7 +930,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, default=lambda: int(datetime.utcnow().timestamp()))
     token_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    
+
     # RAG context (JSON array of referenced document IDs)
     rag_context: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -967,7 +967,7 @@ class DocumentType(str, Enum):
 
 class DocumentEmbedding(Base):
     """Document embedding for RAG retrieval.
-    
+
     Stores vector embeddings of user documents (memos, attachments)
     for semantic search.
     """
@@ -976,22 +976,22 @@ class DocumentEmbedding(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     uid: Mapped[str] = mapped_column(String(256), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    
+
     # Document reference
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     document_type: Mapped[DocumentType] = mapped_column(String(32), nullable=False)
     document_uid: Mapped[str] = mapped_column(String(256), nullable=False)  # memo UID or attachment UID
-    
+
     # Chunk information (for long documents)
     chunk_index: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
-    
+
     # Embedding vector
     embedding: Mapped[list[float]] = mapped_column(
         Vector(get_settings().embedding_dimensions),
         nullable=False,
     )
-    
+
     # Metadata
     created_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, default=lambda: int(datetime.utcnow().timestamp()))
     updated_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, default=lambda: int(datetime.utcnow().timestamp()))
@@ -1055,7 +1055,7 @@ def create_server() -> grpc.Server:
     # Register health check service
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    
+
     # Set health status
     health_servicer.set("", health_pb2.HealthCheckResponse.SERVING)
     health_servicer.set(
@@ -1083,10 +1083,10 @@ def serve() -> None:
     """Start gRPC server and block until termination."""
     settings = get_settings()
     server = create_server()
-    
+
     server.start()
     logger.info(f"gRPC server started on {settings.grpc_host}:{settings.grpc_port}")
-    
+
     try:
         server.wait_for_termination()
     except KeyboardInterrupt:
@@ -1121,9 +1121,9 @@ class LoggingInterceptor(grpc.ServerInterceptor):
         """Log incoming RPC calls."""
         method = handler_call_details.method
         start_time = time.time()
-        
+
         logger.info(f"gRPC call started: {method}")
-        
+
         try:
             response = continuation(handler_call_details)
             elapsed = (time.time() - start_time) * 1000
@@ -1151,13 +1151,13 @@ class RecoveryInterceptor(grpc.ServerInterceptor):
             raise
         except Exception as e:
             logger.exception(f"Unhandled exception in {handler_call_details.method}")
-            
+
             # Return a handler that sends INTERNAL error
             def error_handler(request, context):
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"Internal server error: {str(e)}")
                 return None
-            
+
             return grpc.unary_unary_rpc_method_handler(error_handler)
 ```
 
@@ -1220,11 +1220,11 @@ class AIServiceServicer(ai_service_pb2_grpc.AIServiceServicer):
             create_time=self._timestamp_from_unix(conv.created_ts),
             update_time=self._timestamp_from_unix(conv.updated_ts),
         )
-        
+
         if include_messages:
             for msg in conv.messages:
                 proto.messages.append(self._message_to_proto(msg))
-        
+
         return proto
 
     def _message_to_proto(self, msg: Message) -> ai_service_pb2.Message:
@@ -1369,7 +1369,7 @@ class AIServiceServicer(ai_service_pb2_grpc.AIServiceServicer):
                 conv.model = request.model
             if request.provider:
                 conv.provider = request.provider
-            
+
             conv.updated_ts = int(datetime.utcnow().timestamp())
             db.flush()
             db.refresh(conv)
@@ -1461,7 +1461,7 @@ class AIServiceServicer(ai_service_pb2_grpc.AIServiceServicer):
                 if len(request.content) > 50:
                     title += "..."
                 conv.title = title
-            
+
             conv.updated_ts = int(datetime.utcnow().timestamp())
             db.flush()
             db.refresh(user_msg)
@@ -1484,7 +1484,7 @@ class AIServiceServicer(ai_service_pb2_grpc.AIServiceServicer):
         system_content = conv.system_prompt or "You are a helpful AI assistant."
         if rag_context:
             system_content += f"\n\n{rag_context}\n\nUse the above context from the user's notes to help answer their question when relevant."
-        
+
         messages.append(ChatMessage(role="system", content=system_content))
 
         # Conversation history (limit to last 20 messages)
@@ -1532,14 +1532,14 @@ class AIServiceServicer(ai_service_pb2_grpc.AIServiceServicer):
         settings = get_settings()
 
         providers = []
-        
+
         if settings.openai_api_key:
             providers.append(ai_service_pb2.AIProvider(
                 name="openai",
                 display_name="OpenAI",
                 models=["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
             ))
-        
+
         if settings.deepseek_api_key:
             providers.append(ai_service_pb2.AIProvider(
                 name="deepseek",
@@ -1592,15 +1592,15 @@ async def run_webhook_server():
     """Run webhook HTTP server."""
     settings = get_settings()
     app = create_webhook_server()
-    
+
     from aiohttp import web
     runner = web.AppRunner(app)
     await runner.setup()
-    
+
     site = web.TCPSite(runner, settings.http_host, settings.http_port)
     await site.start()
     logger.info(f"Webhook HTTP server started on {settings.http_host}:{settings.http_port}")
-    
+
     # Keep running
     while True:
         await asyncio.sleep(3600)
@@ -1609,9 +1609,9 @@ async def run_webhook_server():
 def main():
     """Main entry point."""
     settings = get_settings()
-    
+
     logger.info("Starting Memos AI Service...")
-    
+
     # Initialize database
     logger.info("Initializing database...")
     init_db()
@@ -1672,22 +1672,22 @@ async def search_similar_documents(
     threshold: float = 0.7,
 ) -> list[dict[str, Any]]:
     """Search for similar documents using pgvector.
-    
+
     Args:
         db: Database session
         user_id: User ID to filter documents
         query_embedding: Query embedding vector
         top_k: Number of results to return
         threshold: Minimum similarity threshold (cosine similarity)
-        
+
     Returns:
         List of matching documents with scores
     """
     # Convert embedding to PostgreSQL vector format
     embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-    
+
     query = text("""
-        SELECT 
+        SELECT
             uid,
             document_type,
             document_uid,
@@ -1700,7 +1700,7 @@ async def search_similar_documents(
         ORDER BY embedding <=> :embedding::vector
         LIMIT :top_k
     """)
-    
+
     result = db.execute(
         query,
         {
@@ -1710,9 +1710,9 @@ async def search_similar_documents(
             "top_k": top_k,
         },
     )
-    
+
     rows = result.fetchall()
-    
+
     return [
         {
             "uid": row.uid,
@@ -1772,7 +1772,7 @@ class RAGRetriever:
         """Retrieve relevant documents for a query."""
         top_k = top_k or self.settings.rag_top_k
         threshold = threshold or self.settings.rag_similarity_threshold
-        
+
         # Generate query embedding
         response = self.openai_client.embeddings.create(
             model=self.settings.embedding_model,
@@ -1780,7 +1780,7 @@ class RAGRetriever:
             dimensions=self.settings.embedding_dimensions,
         )
         query_embedding = response.data[0].embedding
-        
+
         # Search for similar documents
         results = search_similar_documents(
             db=self.db,
@@ -1789,7 +1789,7 @@ class RAGRetriever:
             top_k=top_k,
             threshold=threshold,
         )
-        
+
         documents = [
             RetrievedDocument(
                 document_type=r["document_type"],
@@ -1800,7 +1800,7 @@ class RAGRetriever:
             )
             for r in results
         ]
-        
+
         logger.info(f"Retrieved {len(documents)} documents for user {user_id}")
         return documents
 
@@ -1808,15 +1808,15 @@ class RAGRetriever:
         """Format retrieved documents as context for LLM prompt."""
         if not documents:
             return ""
-        
+
         context_parts = ["The following information from your notes may be relevant:\n"]
-        
+
         for i, doc in enumerate(documents, 1):
             source = "memo" if doc.document_type == "memo" else "attachment"
             context_parts.append(f"[{i}] From {source}:")
             context_parts.append(doc.chunk_text)
             context_parts.append("")
-        
+
         return "\n".join(context_parts)
 ```
 
@@ -1903,22 +1903,22 @@ class OpenAIProvider(LLMProvider):
         temperature: float = 0.7,
     ) -> CompletionResponse:
         model = model or self._default_model
-        
+
         openai_messages = [
             {"role": msg.role, "content": msg.content}
             for msg in messages
         ]
-        
+
         response = self.client.chat.completions.create(
             model=model,
             messages=openai_messages,
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        
+
         choice = response.choices[0]
         usage = response.usage
-        
+
         return CompletionResponse(
             content=choice.message.content or "",
             token_count=usage.total_tokens if usage else 0,
@@ -1926,7 +1926,7 @@ class OpenAIProvider(LLMProvider):
         )
 ```
 
-### 6.3 Provider Factory (src/llm/__init__.py)
+### 6.3 Provider Factory (src/llm/**init**.py)
 
 ```python
 """LLM provider factory."""
@@ -1940,12 +1940,12 @@ def get_llm_provider(name: str | None = None) -> LLMProvider:
     """Get an LLM provider by name."""
     settings = get_settings()
     name = name or settings.default_provider
-    
+
     if name == "openai":
         if not settings.openai_api_key:
             raise ValueError("OpenAI API key not configured")
         return OpenAIProvider()
-    
+
     if name == "deepseek":
         if not settings.deepseek_api_key:
             raise ValueError("DeepSeek API key not configured")
@@ -1955,7 +1955,7 @@ def get_llm_provider(name: str | None = None) -> LLMProvider:
         provider.client.base_url = settings.deepseek_base_url
         provider.client.api_key = settings.deepseek_api_key
         return provider
-    
+
     raise ValueError(f"Unknown LLM provider: {name}")
 ```
 
@@ -1991,25 +1991,25 @@ def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
 async def handle_memo_webhook(request: web.Request) -> web.Response:
     """Handle memo create/update/delete webhooks."""
     settings = get_settings()
-    
+
     # Verify signature
     signature = request.headers.get("X-Webhook-Signature", "")
     body = await request.read()
-    
+
     if settings.webhook_secret and not verify_signature(body, signature, settings.webhook_secret):
         return web.json_response({"error": "Invalid signature"}, status=401)
-    
+
     data = json.loads(body)
     event = data.get("event")
-    
+
     with get_db_context() as db:
         indexer = DocumentIndexer(db)
-        
+
         if event == "memo.deleted":
             count = indexer.delete_memo_index(data["memo_uid"])
             logger.info(f"Deleted index for memo {data['memo_uid']}: {count} chunks")
             return web.json_response({"status": "ok", "deleted_chunks": count})
-        
+
         if event in ("memo.created", "memo.updated"):
             count = indexer.index_memo(
                 user_id=data["user_id"],
@@ -2018,7 +2018,7 @@ async def handle_memo_webhook(request: web.Request) -> web.Response:
             )
             logger.info(f"Indexed memo {data['memo_uid']}: {count} chunks")
             return web.json_response({"status": "ok", "indexed_chunks": count})
-    
+
     return web.json_response({"error": f"Unknown event: {event}"}, status=400)
 
 
@@ -2089,17 +2089,17 @@ server {
     location ~ ^/memos\.api\.v1\.AIService/ {
         # gRPC proxy settings
         grpc_pass grpc://ai_grpc;
-        
+
         # Pass original headers including Authorization
         grpc_set_header Host $host;
         grpc_set_header X-Real-IP $remote_addr;
         grpc_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         grpc_set_header X-Forwarded-Proto $scheme;
-        
+
         # Timeouts for AI responses (LLM can be slow)
         grpc_read_timeout 120s;
         grpc_send_timeout 120s;
-        
+
         # Error handling
         error_page 502 = /grpc_error_502;
         error_page 503 = /grpc_error_503;
@@ -2111,7 +2111,7 @@ server {
         # Only allow internal access
         allow 127.0.0.1;
         deny all;
-        
+
         proxy_pass http://ai_webhooks/webhooks/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -2179,14 +2179,14 @@ server {
 
 ### 8.2 Key Nginx Configuration Notes
 
-| Setting | Purpose |
-|---------|---------|
-| `http2 on` | Required for gRPC (uses HTTP/2 framing) |
-| `grpc_pass grpc://` | Routes to gRPC upstream (not `proxy_pass`) |
-| `grpc_read_timeout 120s` | Long timeout for LLM responses |
-| `location ~ ^/memos\.api\.v1\.AIService/` | Regex match for AI service methods |
-| `grpc_set_header` | Pass headers to gRPC backend |
-| Error pages with `grpc-status` | Return proper gRPC error codes |
+| Setting                                   | Purpose                                    |
+| ----------------------------------------- | ------------------------------------------ |
+| `http2 on`                                | Required for gRPC (uses HTTP/2 framing)    |
+| `grpc_pass grpc://`                       | Routes to gRPC upstream (not `proxy_pass`) |
+| `grpc_read_timeout 120s`                  | Long timeout for LLM responses             |
+| `location ~ ^/memos\.api\.v1\.AIService/` | Regex match for AI service methods         |
+| `grpc_set_header`                         | Pass headers to gRPC backend               |
+| Error pages with `grpc-status`            | Return proper gRPC error codes             |
 
 ---
 
@@ -2258,8 +2258,8 @@ services:
     container_name: memos-ai
     restart: unless-stopped
     ports:
-      - "127.0.0.1:50051:50051"  # gRPC
-      - "127.0.0.1:8000:8000"    # HTTP webhooks
+      - "127.0.0.1:50051:50051" # gRPC
+      - "127.0.0.1:8000:8000" # HTTP webhooks
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - POSTGRES_HOST=ai-db
@@ -2372,13 +2372,13 @@ func (c *AIWebhookClient) NotifyMemoChange(ctx context.Context, event *MemoEvent
 	req, _ := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/webhooks/memo", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Webhook-Signature", c.sign(body))
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook returned status %d", resp.StatusCode)
 	}
@@ -2399,7 +2399,7 @@ Delete or disable these files (AI now handled by Python service):
 ```
 DELETE:
 - server/router/api/v1/ai_service.go
-- store/ai_conversation.go  
+- store/ai_conversation.go
 - store/ai_message.go
 - store/db/sqlite/ai_conversation.go
 - store/db/sqlite/ai_message.go
@@ -2414,6 +2414,7 @@ DELETE:
 ## Implementation Checklist
 
 ### Phase 1: Project Setup
+
 - [ ] Create `ai-service/` directory structure
 - [ ] Create `pyproject.toml` with dependencies
 - [ ] Create `src/config.py` configuration
@@ -2422,48 +2423,57 @@ DELETE:
 - [ ] Generate Python protobuf code: `cd proto && buf generate`
 
 ### Phase 2: Authentication
+
 - [ ] Implement `src/auth/jwt.py` (JWT validation matching Go)
 - [ ] Implement `src/auth/interceptor.py` (gRPC auth interceptor)
 - [ ] Write auth unit tests
 
 ### Phase 3: Database
+
 - [ ] Create SQLAlchemy models
 - [ ] Set up Alembic migrations
 - [ ] Create initial migration with pgvector
 - [ ] Test database connection
 
 ### Phase 4: gRPC Server
+
 - [ ] Implement `src/grpc/server.py` (server setup)
 - [ ] Implement `src/grpc/interceptors.py` (logging, recovery)
 - [ ] Implement `src/grpc/servicers/ai_servicer.py` (all methods)
 - [ ] Test with grpcurl
 
 ### Phase 5: RAG Implementation
+
 - [ ] Implement `src/rag/vector_store.py` (pgvector queries)
 - [ ] Implement `src/rag/retriever.py` (embedding + search)
 - [ ] Implement `src/rag/indexer.py` (document indexing)
 
 ### Phase 6: LLM Integration
+
 - [ ] Implement `src/llm/base.py` (provider interface)
 - [ ] Implement `src/llm/openai.py` (OpenAI provider)
 - [ ] Test LLM completion
 
 ### Phase 7: Webhooks
+
 - [ ] Implement `src/webhooks/server.py` (aiohttp server)
 - [ ] Implement memo webhook handler
 - [ ] Test webhook signature verification
 
 ### Phase 8: Go Backend Changes
+
 - [ ] Add webhook dispatcher to Go backend
 - [ ] Integrate webhooks into memo service
 - [ ] Remove old AI service code from Go
 
 ### Phase 9: Nginx Configuration
+
 - [ ] Configure gRPC routing for AI service
 - [ ] Configure HTTP routing for webhooks
 - [ ] Test gRPC through Nginx
 
 ### Phase 10: Docker Deployment
+
 - [ ] Create Dockerfile
 - [ ] Create docker-compose.yml
 - [ ] Test full stack locally
@@ -2475,23 +2485,23 @@ DELETE:
 
 ### gRPC Methods (Python AI Service)
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `CreateConversation` | `/memos.api.v1.AIService/CreateConversation` | Yes | Create conversation |
-| `ListConversations` | `/memos.api.v1.AIService/ListConversations` | Yes | List conversations |
-| `GetConversation` | `/memos.api.v1.AIService/GetConversation` | Yes | Get conversation |
-| `UpdateConversation` | `/memos.api.v1.AIService/UpdateConversation` | Yes | Update conversation |
-| `DeleteConversation` | `/memos.api.v1.AIService/DeleteConversation` | Yes | Delete conversation |
-| `SendMessage` | `/memos.api.v1.AIService/SendMessage` | Yes | Send message + get AI response |
-| `ListMessages` | `/memos.api.v1.AIService/ListMessages` | Yes | List messages |
-| `GetAIConfig` | `/memos.api.v1.AIService/GetAIConfig` | No | Get AI configuration |
+| Method               | Path                                         | Auth | Description                    |
+| -------------------- | -------------------------------------------- | ---- | ------------------------------ |
+| `CreateConversation` | `/memos.api.v1.AIService/CreateConversation` | Yes  | Create conversation            |
+| `ListConversations`  | `/memos.api.v1.AIService/ListConversations`  | Yes  | List conversations             |
+| `GetConversation`    | `/memos.api.v1.AIService/GetConversation`    | Yes  | Get conversation               |
+| `UpdateConversation` | `/memos.api.v1.AIService/UpdateConversation` | Yes  | Update conversation            |
+| `DeleteConversation` | `/memos.api.v1.AIService/DeleteConversation` | Yes  | Delete conversation            |
+| `SendMessage`        | `/memos.api.v1.AIService/SendMessage`        | Yes  | Send message + get AI response |
+| `ListMessages`       | `/memos.api.v1.AIService/ListMessages`       | Yes  | List messages                  |
+| `GetAIConfig`        | `/memos.api.v1.AIService/GetAIConfig`        | No   | Get AI configuration           |
 
 ### HTTP Endpoints (Python Webhooks)
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
+| Method | Path             | Auth      | Description         |
+| ------ | ---------------- | --------- | ------------------- |
 | `POST` | `/webhooks/memo` | Signature | Memo change webhook |
-| `GET` | `/health` | No | Health check |
+| `GET`  | `/health`        | No        | Health check        |
 
 ---
 
@@ -2499,27 +2509,27 @@ DELETE:
 
 ### Python AI Service
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `JWT_SECRET` | Yes | Must match Go backend |
-| `GRPC_PORT` | No | gRPC port (default: 50051) |
-| `HTTP_PORT` | No | HTTP webhook port (default: 8000) |
-| `POSTGRES_HOST` | Yes | PostgreSQL host |
-| `POSTGRES_PORT` | No | PostgreSQL port (default: 5432) |
-| `POSTGRES_USER` | Yes | PostgreSQL user |
-| `POSTGRES_PASSWORD` | Yes | PostgreSQL password |
-| `POSTGRES_DB` | Yes | PostgreSQL database |
-| `OPENAI_API_KEY` | No | OpenAI API key |
-| `DEEPSEEK_API_KEY` | No | DeepSeek API key |
-| `GO_BACKEND_URL` | Yes | Go backend URL for PAT validation |
-| `WEBHOOK_SECRET` | Yes | Webhook signature secret |
+| Variable            | Required | Description                       |
+| ------------------- | -------- | --------------------------------- |
+| `JWT_SECRET`        | Yes      | Must match Go backend             |
+| `GRPC_PORT`         | No       | gRPC port (default: 50051)        |
+| `HTTP_PORT`         | No       | HTTP webhook port (default: 8000) |
+| `POSTGRES_HOST`     | Yes      | PostgreSQL host                   |
+| `POSTGRES_PORT`     | No       | PostgreSQL port (default: 5432)   |
+| `POSTGRES_USER`     | Yes      | PostgreSQL user                   |
+| `POSTGRES_PASSWORD` | Yes      | PostgreSQL password               |
+| `POSTGRES_DB`       | Yes      | PostgreSQL database               |
+| `OPENAI_API_KEY`    | No       | OpenAI API key                    |
+| `DEEPSEEK_API_KEY`  | No       | DeepSeek API key                  |
+| `GO_BACKEND_URL`    | Yes      | Go backend URL for PAT validation |
+| `WEBHOOK_SECRET`    | Yes      | Webhook signature secret          |
 
 ### Go Backend (New Variables)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MEMOS_AI_WEBHOOK_URL` | No | AI service webhook URL |
-| `MEMOS_AI_WEBHOOK_SECRET` | No | Webhook signature secret |
+| Variable                  | Required | Description              |
+| ------------------------- | -------- | ------------------------ |
+| `MEMOS_AI_WEBHOOK_URL`    | No       | AI service webhook URL   |
+| `MEMOS_AI_WEBHOOK_SECRET` | No       | Webhook signature secret |
 
 ---
 

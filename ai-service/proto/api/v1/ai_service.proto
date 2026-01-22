@@ -1,0 +1,254 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/v1";
+
+// AIService provides AI-powered features for the Memos application.
+service AIService {
+  // GetAIConfig returns the AI configuration for the instance.
+  rpc GetAIConfig(GetAIConfigRequest) returns (AIConfig) {
+    option (google.api.http) = {get: "/api/v1/ai/config"};
+  }
+
+  // ListProviders returns available LLM providers.
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse) {
+    option (google.api.http) = {get: "/api/v1/ai/providers"};
+  }
+
+  // CreateConversation creates a new AI conversation.
+  rpc CreateConversation(CreateConversationRequest) returns (Conversation) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/conversations"
+      body: "*"
+    };
+  }
+
+  // GetConversation retrieves a conversation by name.
+  rpc GetConversation(GetConversationRequest) returns (Conversation) {
+    option (google.api.http) = {get: "/api/v1/ai/{name=conversations/*}"};
+  }
+
+  // ListConversations lists conversations for the current user.
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse) {
+    option (google.api.http) = {get: "/api/v1/ai/conversations"};
+  }
+
+  // UpdateConversation updates a conversation.
+  rpc UpdateConversation(UpdateConversationRequest) returns (Conversation) {
+    option (google.api.http) = {
+      patch: "/api/v1/ai/{conversation.name=conversations/*}"
+      body: "conversation"
+    };
+  }
+
+  // DeleteConversation deletes a conversation.
+  rpc DeleteConversation(DeleteConversationRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/api/v1/ai/{name=conversations/*}"};
+  }
+
+  // SendMessage sends a message and gets an AI response.
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/{conversation_name=conversations/*}/messages"
+      body: "*"
+    };
+  }
+
+  // StreamMessage sends a message and streams the AI response.
+  rpc StreamMessage(StreamMessageRequest) returns (stream StreamMessageResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/{conversation_name=conversations/*}/messages:stream"
+      body: "*"
+    };
+  }
+
+  // ListMessages lists messages in a conversation.
+  rpc ListMessages(ListMessagesRequest) returns (ListMessagesResponse) {
+    option (google.api.http) = {get: "/api/v1/ai/{conversation_name=conversations/*}/messages"};
+  }
+
+  // IndexMemo indexes a memo for RAG retrieval.
+  rpc IndexMemo(IndexMemoRequest) returns (IndexMemoResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/ai/index/memo"
+      body: "*"
+    };
+  }
+
+  // DeleteMemoIndex deletes a memo's index.
+  rpc DeleteMemoIndex(DeleteMemoIndexRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/api/v1/ai/index/memo/{memo_uid}"};
+  }
+}
+
+// AIConfig represents the AI configuration.
+message AIConfig {
+  bool enabled = 1;
+  string default_provider = 2;
+  string default_model = 3;
+  bool rag_enabled = 4;
+}
+
+// Provider represents an LLM provider.
+message Provider {
+  string name = 1;
+  string display_name = 2;
+  repeated string models = 3;
+}
+
+message GetAIConfigRequest {}
+
+message ListProvidersRequest {}
+
+message ListProvidersResponse {
+  repeated Provider providers = 1;
+}
+
+// Conversation represents an AI conversation.
+message Conversation {
+  // Format: conversations/{uid}
+  string name = 1;
+  string uid = 2;
+  int32 creator_id = 3;
+  string title = 4;
+  string provider = 5;
+  string model = 6;
+  string system_prompt = 7;
+  google.protobuf.Timestamp create_time = 8;
+  google.protobuf.Timestamp update_time = 9;
+  RowStatus row_status = 10;
+}
+
+// Message represents a message in a conversation.
+message Message {
+  // Format: conversations/{conversation_uid}/messages/{uid}
+  string name = 1;
+  string uid = 2;
+  string conversation_uid = 3;
+  MessageRole role = 4;
+  string content = 5;
+  int32 token_count = 6;
+  google.protobuf.Timestamp create_time = 7;
+}
+
+enum MessageRole {
+  MESSAGE_ROLE_UNSPECIFIED = 0;
+  USER = 1;
+  ASSISTANT = 2;
+  SYSTEM = 3;
+}
+
+enum RowStatus {
+  ROW_STATUS_UNSPECIFIED = 0;
+  NORMAL = 1;
+  ARCHIVED = 2;
+}
+
+message CreateConversationRequest {
+  string title = 1;
+  string provider = 2;
+  string model = 3;
+  string system_prompt = 4;
+}
+
+message GetConversationRequest {
+  string name = 1;
+}
+
+message ListConversationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListConversationsResponse {
+  repeated Conversation conversations = 1;
+  string next_page_token = 2;
+}
+
+message UpdateConversationRequest {
+  Conversation conversation = 1;
+  // Fields to update. If empty, all fields are updated.
+  repeated string update_mask = 2;
+}
+
+message DeleteConversationRequest {
+  string name = 1;
+}
+
+message SendMessageRequest {
+  string conversation_name = 1;
+  string content = 2;
+  // Whether to use RAG for context retrieval.
+  bool use_rag = 3;
+}
+
+message SendMessageResponse {
+  Message user_message = 1;
+  Message assistant_message = 2;
+  // Documents retrieved via RAG (if enabled).
+  repeated RetrievedDocument retrieved_documents = 3;
+}
+
+message StreamMessageRequest {
+  string conversation_name = 1;
+  string content = 2;
+  bool use_rag = 3;
+}
+
+message StreamMessageResponse {
+  oneof response {
+    // Initial response with user message info.
+    StreamMessageStart start = 1;
+    // Incremental content chunk.
+    string content_chunk = 2;
+    // Final response with complete assistant message.
+    StreamMessageEnd end = 3;
+  }
+}
+
+message StreamMessageStart {
+  Message user_message = 1;
+  repeated RetrievedDocument retrieved_documents = 2;
+}
+
+message StreamMessageEnd {
+  Message assistant_message = 1;
+}
+
+message RetrievedDocument {
+  string document_type = 1;  // "memo" or "attachment"
+  string document_uid = 2;
+  string chunk_text = 3;
+  float score = 4;
+  int32 chunk_index = 5;
+}
+
+message ListMessagesRequest {
+  string conversation_name = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListMessagesResponse {
+  repeated Message messages = 1;
+  string next_page_token = 2;
+}
+
+message IndexMemoRequest {
+  string memo_uid = 1;
+  int32 user_id = 2;
+  string content = 3;
+}
+
+message IndexMemoResponse {
+  int32 chunks_indexed = 1;
+}
+
+message DeleteMemoIndexRequest {
+  string memo_uid = 1;
+}

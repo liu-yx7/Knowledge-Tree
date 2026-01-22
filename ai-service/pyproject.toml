@@ -1,0 +1,80 @@
+[project]
+name = "memos-ai-service"
+version = "0.1.0"
+description = "AI microservice for Memos with RAG capabilities (gRPC)"
+requires-python = ">=3.11"
+dependencies = [
+    # gRPC
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "grpcio-reflection>=1.60.0",
+    "grpcio-health-checking>=1.60.0",
+
+    # Database
+    "sqlalchemy>=2.0.25",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.1",
+    "pgvector>=0.2.4",
+    "psycopg2-binary>=2.9.9",
+
+    # Authentication
+    "pyjwt>=2.8.0",
+    "cryptography>=42.0.0",
+
+    # LlamaIndex & LLM
+    "llama-index>=0.10.0",
+    "llama-index-vector-stores-postgres>=0.1.0",
+    "llama-index-embeddings-openai>=0.1.0",
+    "llama-index-llms-openai>=0.1.0",
+    "openai>=1.10.0",
+
+    # Embeddings
+    "numpy>=1.26.0",
+    "sentence-transformers>=2.2.0",
+
+    # Document processing
+    "pypdf>=4.0.0",
+    "python-magic>=0.4.27",
+
+    # HTTP server for webhooks
+    "aiohttp>=3.9.0",
+
+    # Utilities
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "httpx>=0.26.0",
+    "tenacity>=8.2.3",
+
+    # Protobuf
+    "protobuf>=4.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "grpcio-testing>=1.60.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "mypy-protobuf>=3.5.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true

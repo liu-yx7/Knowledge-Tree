@@ -1,0 +1,138 @@
+# Docker Compose configuration for Memos with AI Service
+# Usage: docker compose -f docker-compose.ai.yaml up -d
+
+services:
+  # Nginx gateway for routing
+  nginx:
+    image: nginx:alpine
+    container_name: memos-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Uncomment for SSL:
+      # - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - memos
+      - ai-service
+    restart: unless-stopped
+    networks:
+      - memos-network
+
+  # Main Memos application
+  memos:
+    image: ghcr.io/usememos/memos:latest
+    container_name: memos
+    volumes:
+      - memos-data:/var/opt/memos
+    environment:
+      - MEMOS_MODE=prod
+      - MEMOS_PORT=5230
+      # AI Service webhook configuration
+      - MEMOS_AI_WEBHOOK_URL=http://ai-service:8000
+      - MEMOS_AI_WEBHOOK_SECRET=${AI_WEBHOOK_SECRET:-}
+    depends_on:
+      ai-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - memos-network
+
+  # AI Service (gRPC + HTTP webhooks)
+  ai-service:
+    build:
+      context: ../ai-service
+      dockerfile: Dockerfile
+      target: production
+    container_name: memos-ai-service
+    environment:
+      # gRPC and HTTP ports
+      - GRPC_PORT=50051
+      - HTTP_PORT=8000
+
+      # Database configuration (must match Settings class field names)
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=memos_ai
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-memos}
+      - POSTGRES_DB=memos_ai
+
+      # JWT secret (must match Go backend)
+      - JWT_SECRET=${JWT_SECRET}
+
+      # OpenAI configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4o-mini}
+
+      # RAG configuration
+      - RAG_ENABLED=${RAG_ENABLED:-true}
+      - RAG_CHUNK_SIZE=${RAG_CHUNK_SIZE:-512}
+      - RAG_CHUNK_OVERLAP=${RAG_CHUNK_OVERLAP:-50}
+      - RAG_TOP_K=${RAG_TOP_K:-5}
+
+      # Webhook secret for signature verification
+      - WEBHOOK_SECRET=${AI_WEBHOOK_SECRET:-}
+
+      # Go backend URL for PAT validation
+      - GO_BACKEND_URL=http://memos:5230
+
+      # Debug mode
+      - DEBUG=${DEBUG:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - memos-network
+
+  # PostgreSQL for AI service persistence
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: memos-ai-postgres
+    environment:
+      - POSTGRES_USER=memos_ai
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-memos}
+      - POSTGRES_DB=memos_ai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memos_ai -d memos_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - memos-network
+
+  # ChromaDB for vector storage
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: memos-chroma
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+    networks:
+      - memos-network
+
+volumes:
+  memos-data:
+    driver: local
+  postgres-data:
+    driver: local
+  chroma-data:
+    driver: local
+
+networks:
+  memos-network:
+    driver: bridge
