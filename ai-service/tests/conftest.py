@@ -1,10 +1,20 @@
 """Pytest configuration and fixtures."""
 
+import os
+
+# Set required environment variables BEFORE importing anything else
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret-for-testing-only-32chars")
+os.environ.setdefault("POSTGRES_PASSWORD", "test-password")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_DB", "test_db")
+os.environ.setdefault("OPENAI_API_KEY", "test-api-key")
+
 import pytest
+from datetime import datetime, UTC
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.models import Base
+from src.db.database import Base
 
 
 @pytest.fixture
@@ -26,7 +36,6 @@ def db_session():
 def sample_conversation(db_session):
     """Create a sample conversation for testing."""
     from src.db.models import Conversation
-    from datetime import datetime
 
     conv = Conversation(
         uid="test-conv-123",
@@ -35,8 +44,8 @@ def sample_conversation(db_session):
         provider="openai",
         model="gpt-4",
         rag_enabled=True,
-        created_ts=int(datetime.utcnow().timestamp()),
-        updated_ts=int(datetime.utcnow().timestamp()),
+        created_ts=int(datetime.now(UTC).timestamp()),
+        updated_ts=int(datetime.now(UTC).timestamp()),
     )
     db_session.add(conv)
     db_session.commit()

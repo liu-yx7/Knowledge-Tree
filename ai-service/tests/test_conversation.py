@@ -1,7 +1,7 @@
 """Tests for conversation operations."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from src.db.models import Conversation, Message
 
@@ -18,8 +18,8 @@ class TestConversation:
             provider="openai",
             model="gpt-4",
             rag_enabled=True,
-            created_ts=int(datetime.utcnow().timestamp()),
-            updated_ts=int(datetime.utcnow().timestamp()),
+            created_ts=int(datetime.now(UTC).timestamp()),
+            updated_ts=int(datetime.now(UTC).timestamp()),
         )
         db_session.add(conv)
         db_session.commit()
@@ -37,7 +37,7 @@ class TestConversation:
             conversation_id=sample_conversation.id,
             role="user",
             content="Hello, AI!",
-            created_ts=int(datetime.utcnow().timestamp()),
+            created_ts=int(datetime.now(UTC).timestamp()),
         )
         db_session.add(msg)
         db_session.commit()
@@ -56,7 +56,7 @@ class TestConversation:
                 conversation_id=sample_conversation.id,
                 role="user" if i % 2 == 0 else "assistant",
                 content=f"Message {i}",
-                created_ts=int(datetime.utcnow().timestamp()),
+                created_ts=int(datetime.now(UTC).timestamp()),
             )
             for i in range(3)
         ]
@@ -73,7 +73,7 @@ class TestConversation:
             conversation_id=sample_conversation.id,
             role="user",
             content="Will be deleted",
-            created_ts=int(datetime.utcnow().timestamp()),
+            created_ts=int(datetime.now(UTC).timestamp()),
         )
         db_session.add(msg)
         db_session.commit()

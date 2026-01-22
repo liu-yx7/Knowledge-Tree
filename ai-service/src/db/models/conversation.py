@@ -1,11 +1,11 @@
 """AI Conversation model."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, Index, String, Text
+from sqlalchemy import Boolean, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.database import Base
@@ -27,12 +27,12 @@ class Conversation(Base):
 
     __tablename__ = "ai_conversations"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     uid: Mapped[str] = mapped_column(String(256), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(512), nullable=False, default="New Chat")
-    created_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, default=lambda: int(datetime.utcnow().timestamp()))
-    updated_ts: Mapped[int] = mapped_column(BigInteger, nullable=False, default=lambda: int(datetime.utcnow().timestamp()))
+    created_ts: Mapped[int] = mapped_column(Integer, nullable=False, default=lambda: int(datetime.now(UTC).timestamp()))
+    updated_ts: Mapped[int] = mapped_column(Integer, nullable=False, default=lambda: int(datetime.now(UTC).timestamp()))
     row_status: Mapped[str] = mapped_column(String(16), nullable=False, default=RowStatus.NORMAL.value)
     model: Mapped[str] = mapped_column(String(128), nullable=False, default="")
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="")

@@ -717,16 +717,34 @@ func (s *APIV1Service) getContentLengthLimit(ctx context.Context) (int, error) {
 
 // DispatchMemoCreatedWebhook dispatches webhook when memo is created.
 func (s *APIV1Service) DispatchMemoCreatedWebhook(ctx context.Context, memo *v1pb.Memo) error {
+	// Notify AI service for RAG indexing
+	creatorID, err := ExtractUserIDFromName(memo.Creator)
+	if err == nil {
+		memoUID, _ := ExtractMemoUIDFromName(memo.Name)
+		webhook.AINotifyMemoCreated(memoUID, creatorID, memo.Content)
+	}
+	
 	return s.dispatchMemoRelatedWebhook(ctx, memo, "memos.memo.created")
 }
 
 // DispatchMemoUpdatedWebhook dispatches webhook when memo is updated.
 func (s *APIV1Service) DispatchMemoUpdatedWebhook(ctx context.Context, memo *v1pb.Memo) error {
+	// Notify AI service for RAG re-indexing
+	creatorID, err := ExtractUserIDFromName(memo.Creator)
+	if err == nil {
+		memoUID, _ := ExtractMemoUIDFromName(memo.Name)
+		webhook.AINotifyMemoUpdated(memoUID, creatorID, memo.Content)
+	}
+	
 	return s.dispatchMemoRelatedWebhook(ctx, memo, "memos.memo.updated")
 }
 
 // DispatchMemoDeletedWebhook dispatches webhook when memo is deleted.
 func (s *APIV1Service) DispatchMemoDeletedWebhook(ctx context.Context, memo *v1pb.Memo) error {
+	// Notify AI service to remove from RAG index
+	memoUID, _ := ExtractMemoUIDFromName(memo.Name)
+	webhook.AINotifyMemoDeleted(memoUID)
+	
 	return s.dispatchMemoRelatedWebhook(ctx, memo, "memos.memo.deleted")
 }
 

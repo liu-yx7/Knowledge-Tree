@@ -13,9 +13,9 @@ class TestSettings:
         """Test default settings values."""
         settings = Settings()
         assert settings.grpc_port == 50051
-        assert settings.webhook_port == 8082
-        assert settings.database_url == "sqlite:///./ai_service.db"
-        assert settings.default_llm_provider == "openai"
+        assert settings.http_port == 8000
+        assert settings.default_provider == "openai"
+        assert settings.default_model == "gpt-4o-mini"
 
     def test_environment_override(self, monkeypatch):
         """Test settings can be overridden via environment."""

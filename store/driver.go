@@ -68,17 +68,6 @@ type Driver interface {
 	GetReaction(ctx context.Context, find *FindReaction) (*Reaction, error)
 	DeleteReaction(ctx context.Context, delete *DeleteReaction) error
 
-	// AIConversation model related methods.
-	CreateAIConversation(ctx context.Context, create *AIConversation) (*AIConversation, error)
-	ListAIConversations(ctx context.Context, find *FindAIConversation) ([]*AIConversation, error)
-	UpdateAIConversation(ctx context.Context, update *UpdateAIConversation) error
-	DeleteAIConversation(ctx context.Context, delete *DeleteAIConversation) error
-
-	// AIMessage model related methods.
-	CreateAIMessage(ctx context.Context, create *AIMessage) (*AIMessage, error)
-	ListAIMessages(ctx context.Context, find *FindAIMessage) ([]*AIMessage, error)
-	DeleteAIMessage(ctx context.Context, delete *DeleteAIMessage) error
-
 	// UserSubscription model related methods.
 	CreateUserSubscription(ctx context.Context, create *UserSubscription) (*UserSubscription, error)
 	ListUserSubscriptions(ctx context.Context, find *FindUserSubscription) ([]*UserSubscription, error)

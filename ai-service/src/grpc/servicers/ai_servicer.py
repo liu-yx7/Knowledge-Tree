@@ -345,3 +345,58 @@ class AIServiceServicer:
             "default_provider": self.settings.default_provider,
             "default_model": self.settings.default_model,
         }
+
+    def ListProviders(self, request, context: grpc.ServicerContext):
+        """List available LLM providers (public endpoint)."""
+        providers = get_available_providers()
+        
+        return {
+            "providers": [
+                {
+                    "name": p["name"],
+                    "display_name": p["display_name"],
+                    "models": p["models"],
+                }
+                for p in providers
+            ],
+        }
+
+    def StreamMessage(self, request, context: grpc.ServicerContext):
+        """Send a message and stream the response (not implemented yet)."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details("Streaming not implemented yet")
+        return
+
+    def IndexMemo(self, request, context: grpc.ServicerContext):
+        """Index a memo for RAG retrieval."""
+        claims = self._get_user_claims(context)
+        
+        from src.rag.indexer import DocumentIndexer
+        
+        with get_db_context() as db:
+            indexer = DocumentIndexer(db)
+            chunks_indexed = indexer.index_memo(
+                user_id=claims.user_id,
+                memo_uid=request.memo_uid,
+                content=request.content,
+            )
+            
+            return {
+                "success": True,
+                "chunks_indexed": chunks_indexed,
+            }
+
+    def DeleteMemoIndex(self, request, context: grpc.ServicerContext):
+        """Delete a memo from the RAG index."""
+        self._get_user_claims(context)  # Verify auth
+        
+        from src.rag.indexer import DocumentIndexer
+        
+        with get_db_context() as db:
+            indexer = DocumentIndexer(db)
+            chunks_deleted = indexer.delete_memo_index(request.memo_uid)
+            
+            return {
+                "success": True,
+                "chunks_indexed": chunks_deleted,  # Reusing field for deleted count
+            }

@@ -19,6 +19,7 @@ import (
 	"github.com/usememos/memos/plugin/llm"
 	"github.com/usememos/memos/plugin/llm/deepseek"
 	"github.com/usememos/memos/plugin/llm/openai"
+	"github.com/usememos/memos/plugin/webhook"
 	storepb "github.com/usememos/memos/proto/gen/store"
 	apiv1 "github.com/usememos/memos/server/router/api/v1"
 	"github.com/usememos/memos/server/router/fileserver"
@@ -60,6 +61,9 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 		secret = instanceBasicSetting.SecretKey
 	}
 	s.Secret = secret
+
+	// Initialize AI webhooks for RAG indexing
+	webhook.InitAIWebhooks()
 
 	// Register healthz endpoint.
 	echoServer.GET("/healthz", func(c echo.Context) error {

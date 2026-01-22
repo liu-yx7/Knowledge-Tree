@@ -1,11 +1,10 @@
 """gRPC module for AI microservice."""
 
 from src.grpc.server import create_grpc_server
-from src.grpc.servicer import AIServiceServicer
+from src.grpc.servicers.ai_servicer import AIServiceServicer
 from src.grpc.interceptors import (
     AuthInterceptor,
     LoggingInterceptor,
-    ErrorHandlerInterceptor,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "AIServiceServicer",
     "AuthInterceptor",
     "LoggingInterceptor",
-    "ErrorHandlerInterceptor",
 ]
