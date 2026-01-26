@@ -8,6 +8,7 @@ import {
 } from "@/components/attachment/utils/videoLinkResolver";
 import { attachmentServiceClient } from "@/connect";
 import { AttachmentSchema } from "@/types/proto/api/v1/attachment_service_pb";
+import { useTranslate } from "@/utils/i18n";
 import { validationService } from "../services";
 import { useEditorContext } from "../state";
 import InsertMenu from "../Toolbar/InsertMenu";
@@ -15,6 +16,7 @@ import VisibilitySelector from "../Toolbar/VisibilitySelector";
 import type { EditorToolbarProps } from "../types";
 
 export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoName }) => {
+  const t = useTranslate();
   const { state, actions, dispatch } = useEditorContext();
   const { valid } = validationService.canSave(state);
 
@@ -71,12 +73,12 @@ export const EditorToolbar: FC<EditorToolbarProps> = ({ onSave, onCancel, memoNa
 
         {onCancel && (
           <Button variant="ghost" onClick={onCancel} disabled={isSaving}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         )}
 
         <Button onClick={onSave} disabled={!valid || isSaving}>
-          {isSaving ? "Saving..." : "Save"}
+          {isSaving ? t("editor.saving") : t("editor.save")}
         </Button>
       </div>
     </div>
