@@ -22,6 +22,7 @@ import (
 	"github.com/usememos/memos/server/router/fileserver"
 	"github.com/usememos/memos/server/router/frontend"
 	"github.com/usememos/memos/server/router/rss"
+	"github.com/usememos/memos/server/runner/ragflowsync"
 	"github.com/usememos/memos/server/runner/s3presign"
 	"github.com/usememos/memos/store"
 )
@@ -32,6 +33,7 @@ type Server struct {
 	Store   *store.Store
 
 	echoServer        *echo.Echo
+	ragflowSyncRunner *ragflowsync.Runner
 	runnerCancelFuncs []context.CancelFunc
 }
 
@@ -71,8 +73,12 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 
 	// Initialize RAGFlow client (替代原有的 LLM Manager)
 	ragflowClient := initRAGFlowClient(profile)
+	ragflowConfig := initRAGFlowConfig(profile)
 
-	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient)
+	// Initialize RAGFlow Sync Runner
+	s.ragflowSyncRunner = ragflowsync.NewRunner(store, ragflowConfig)
+
+	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, s.ragflowSyncRunner)
 
 	// Register HTTP file server routes BEFORE gRPC-Gateway to ensure proper range request handling for Safari.
 	// This uses native HTTP serving (http.ServeContent) instead of gRPC for video/audio files.
@@ -159,6 +165,18 @@ func (s *Server) StartBackgroundRunners(ctx context.Context) {
 		slog.Info("s3presign runner stopped")
 	}()
 
+	// Start RAGFlow Sync Runner (如果已配置)
+	if s.ragflowSyncRunner != nil {
+		ragflowContext, ragflowCancel := context.WithCancel(ctx)
+		s.runnerCancelFuncs = append(s.runnerCancelFuncs, ragflowCancel)
+
+		go func() {
+			s.ragflowSyncRunner.Run(ragflowContext)
+			slog.Info("ragflow sync runner stopped")
+		}()
+		slog.Info("RAGFlow sync runner started")
+	}
+
 	// Log the number of goroutines running
 	slog.Info("background runners started", "goroutines", runtime.NumGoroutine())
 }
@@ -233,4 +251,44 @@ func initRAGFlowClient(p *profile.Profile) *ragflow.Client {
 	)
 
 	return client
+}
+
+// initRAGFlowConfig 初始化 RAGFlow 配置用于 Sync Runner
+func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
+	baseURL := os.Getenv("MEMOS_RAGFLOW_BASE_URL")
+	if baseURL == "" {
+		baseURL = p.RAGFlowBaseURL
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:9380"
+	}
+
+	apiKey := os.Getenv("MEMOS_RAGFLOW_API_KEY")
+	if apiKey == "" {
+		apiKey = p.RAGFlowAPIKey
+	}
+
+	assistantID := os.Getenv("MEMOS_RAGFLOW_ASSISTANT_ID")
+	if assistantID == "" {
+		assistantID = p.RAGFlowAssistantID
+	}
+
+	// 如果没有配置 API Key，返回 nil（同步功能禁用）
+	if apiKey == "" {
+		return nil
+	}
+
+	cfg := &ragflow.Config{
+		BaseURL:     baseURL,
+		APIKey:      apiKey,
+		AssistantID: assistantID,
+	}
+	cfg.WithDefaults()
+
+	if err := cfg.Validate(); err != nil {
+		slog.Error("RAGFlow configuration invalid for sync runner", "error", err)
+		return nil
+	}
+
+	return cfg
 }

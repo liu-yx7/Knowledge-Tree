@@ -145,7 +145,7 @@ func TestStateTracker_ListPendingStates(t *testing.T) {
 
 	// 创建多个 pending 状态
 	for i := 0; i < 5; i++ {
-		_, err := tracker.CreatePendingState(ctx, store.ContentTypeMemo, 
+		_, err := tracker.CreatePendingState(ctx, store.ContentTypeMemo,
 			"memo_pending_"+string(rune('a'+i)), user.ID, "hash")
 		require.NoError(t, err)
 	}

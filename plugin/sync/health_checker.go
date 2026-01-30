@@ -17,11 +17,11 @@ type HealthChecker struct {
 	client *ragflow.Client
 
 	mu            sync.RWMutex
-	isHealthy     bool          // 当前健康状态
-	lastCheckTime time.Time     // 最后检查时间
-	failureCount  int           // 连续失败次数
-	circuitOpen   bool          // 熔断器是否打开
-	circuitOpenAt time.Time     // 熔断器打开时间
+	isHealthy     bool      // 当前健康状态
+	lastCheckTime time.Time // 最后检查时间
+	failureCount  int       // 连续失败次数
+	circuitOpen   bool      // 熔断器是否打开
+	circuitOpenAt time.Time // 熔断器打开时间
 
 	// 配置
 	checkInterval    time.Duration // 健康检查间隔

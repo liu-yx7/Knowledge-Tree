@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/v1";
+
+// RAGFlowService 提供 RAGFlow 同步状态查询和管理功能
+service RAGFlowService {
+  // GetSyncStatus 获取 RAGFlow 同步服务状态
+  rpc GetSyncStatus(GetSyncStatusRequest) returns (SyncStatus) {
+    option (google.api.http) = {get: "/api/v1/ragflow/status"};
+  }
+
+  // GetSyncStats 获取同步统计信息
+  rpc GetSyncStats(GetSyncStatsRequest) returns (SyncStats) {
+    option (google.api.http) = {get: "/api/v1/ragflow/stats"};
+  }
+
+  // TriggerSync 手动触发一次同步
+  rpc TriggerSync(TriggerSyncRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/api/v1/ragflow/sync"
+      body: "*"
+    };
+  }
+
+  // SemanticSearch 执行语义检索
+  rpc SemanticSearch(SemanticSearchRequest) returns (SemanticSearchResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/ragflow/search"
+      body: "*"
+    };
+  }
+
+  // ListContentSyncStates 列出内容同步状态
+  rpc ListContentSyncStates(ListContentSyncStatesRequest) returns (ListContentSyncStatesResponse) {
+    option (google.api.http) = {get: "/api/v1/ragflow/sync-states"};
+  }
+}
+
+// ==================== 同步状态相关 ====================
+
+message GetSyncStatusRequest {}
+
+message SyncStatus {
+  // RAGFlow 服务是否健康
+  bool healthy = 1;
+  // 熔断器是否打开
+  bool circuit_open = 2;
+  // 最后检查时间
+  google.protobuf.Timestamp last_check_time = 3;
+  // 连续失败次数
+  int32 failure_count = 4;
+  // 同步服务是否运行中
+  bool runner_active = 5;
+}
+
+message GetSyncStatsRequest {}
+
+message SyncStats {
+  // 待同步数量
+  int32 pending_count = 1;
+  // 已同步数量
+  int32 synced_count = 2;
+  // 失败数量
+  int32 failed_count = 3;
+  // 跳过数量
+  int32 skipped_count = 4;
+  // 总数量
+  int32 total_count = 5;
+}
+
+message TriggerSyncRequest {}
+
+// ==================== 语义检索相关 ====================
+
+message SemanticSearchRequest {
+  // 搜索查询
+  string query = 1 [(google.api.field_behavior) = REQUIRED];
+  // 返回结果数量限制
+  int32 top_k = 2 [(google.api.field_behavior) = OPTIONAL];
+  // 相似度阈值 (0.0-1.0)
+  float similarity_threshold = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message SemanticSearchResponse {
+  // 搜索结果列表
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  // Memo 资源名称 (memos/{uid})
+  string memo_name = 1;
+  // Memo 内容片段
+  string content_snippet = 2;
+  // 相似度分数 (0.0-1.0)
+  float similarity_score = 3;
+  // Memo 标题（第一行或前50字符）
+  string title = 4;
+  // 创建时间
+  google.protobuf.Timestamp create_time = 5;
+}
+
+// ==================== 同步状态列表 ====================
+
+message ListContentSyncStatesRequest {
+  // 过滤状态: pending, synced, failed, skipped
+  string status_filter = 1 [(google.api.field_behavior) = OPTIONAL];
+  // 内容类型过滤: memo, attachment
+  string content_type_filter = 2 [(google.api.field_behavior) = OPTIONAL];
+  // 分页大小
+  int32 page_size = 3 [(google.api.field_behavior) = OPTIONAL];
+  // 分页令牌
+  string page_token = 4 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ListContentSyncStatesResponse {
+  // 同步状态列表
+  repeated ContentSyncState sync_states = 1;
+  // 下一页令牌
+  string next_page_token = 2;
+}
+
+message ContentSyncState {
+  // 内容类型: memo, attachment
+  string content_type = 1;
+  // 内容 UID
+  string content_uid = 2;
+  // 同步状态: pending, synced, failed, skipped
+  string status = 3;
+  // RAGFlow 文档 ID
+  string ragflow_document_id = 4;
+  // 同步时间
+  google.protobuf.Timestamp synced_time = 5;
+  // 错误信息（如果失败）
+  string error_message = 6;
+  // 重试次数
+  int32 retry_count = 7;
+}

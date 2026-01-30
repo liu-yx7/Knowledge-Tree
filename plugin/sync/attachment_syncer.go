@@ -42,8 +42,8 @@ var parseableMimeTypes = map[string]bool{
 	"application/msword": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 	"application/vnd.ms-excel": true,
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":       true,
-	"application/vnd.ms-powerpoint":                                           true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"application/vnd.ms-powerpoint":                                             true,
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
 	// 图片类型（支持 OCR）
 	"image/png":  true,

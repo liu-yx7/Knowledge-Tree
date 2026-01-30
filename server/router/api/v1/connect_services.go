@@ -588,3 +588,45 @@ func (s *ConnectServiceHandler) GetAIConfig(ctx context.Context, req *connect.Re
 	}
 	return connect.NewResponse(resp), nil
 }
+
+// RAGFlowService
+
+func (s *ConnectServiceHandler) GetSyncStatus(ctx context.Context, req *connect.Request[v1pb.GetSyncStatusRequest]) (*connect.Response[v1pb.SyncStatus], error) {
+	resp, err := s.APIV1Service.GetSyncStatus(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetSyncStats(ctx context.Context, req *connect.Request[v1pb.GetSyncStatsRequest]) (*connect.Response[v1pb.SyncStats], error) {
+	resp, err := s.APIV1Service.GetSyncStats(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) TriggerSync(ctx context.Context, req *connect.Request[v1pb.TriggerSyncRequest]) (*connect.Response[emptypb.Empty], error) {
+	resp, err := s.APIV1Service.TriggerSync(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) SemanticSearch(ctx context.Context, req *connect.Request[v1pb.SemanticSearchRequest]) (*connect.Response[v1pb.SemanticSearchResponse], error) {
+	resp, err := s.APIV1Service.SemanticSearch(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) ListContentSyncStates(ctx context.Context, req *connect.Request[v1pb.ListContentSyncStatesRequest]) (*connect.Response[v1pb.ListContentSyncStatesResponse], error) {
+	resp, err := s.APIV1Service.ListContentSyncStates(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}

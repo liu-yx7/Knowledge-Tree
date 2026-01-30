@@ -15,6 +15,7 @@ import (
 	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
+	"github.com/usememos/memos/server/runner/ragflowsync"
 	"github.com/usememos/memos/store"
 )
 
@@ -28,6 +29,7 @@ type APIV1Service struct {
 	v1pb.UnimplementedActivityServiceServer
 	v1pb.UnimplementedIdentityProviderServiceServer
 	v1pb.UnimplementedAIServiceServer
+	v1pb.UnimplementedRAGFlowServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
@@ -35,11 +37,14 @@ type APIV1Service struct {
 	MarkdownService markdown.Service
 	RAGFlowClient   *ragflow.Client // 替代原有的 LLMManager
 
+	// RAGFlow 同步 Runner - 用于触发同步事件
+	RAGFlowSyncRunner *ragflowsync.Runner
+
 	// thumbnailSemaphore limits concurrent thumbnail generation to prevent memory exhaustion
 	thumbnailSemaphore *semaphore.Weighted
 }
 
-func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client) *APIV1Service {
+func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowSyncRunner *ragflowsync.Runner) *APIV1Service {
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
@@ -49,6 +54,7 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 		Store:              store,
 		MarkdownService:    markdownService,
 		RAGFlowClient:      ragflowClient,
+		RAGFlowSyncRunner:  ragflowSyncRunner,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
 }

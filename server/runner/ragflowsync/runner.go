@@ -1,174 +1,325 @@
-// Package ragflowsync 提供 RAGFlow 后台同步任务
-// 职责：定期运行批量同步，处理待同步和失败重试的内容
 package ragflowsync
 
 import (
 	"context"
 	"log/slog"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/usememos/memos/plugin/ragflow"
-	"github.com/usememos/memos/plugin/sync"
+	pluginsync "github.com/usememos/memos/plugin/sync"
 	"github.com/usememos/memos/store"
 )
 
 // ==================== Runner 定义 ====================
 
-// Runner RAGFlow 同步后台任务
-// 职责：
-// 1. 定期执行批量同步
-// 2. 启动后台健康检查
-// 3. 提供手动触发同步的能力
+// Runner RAGFlow 同步运行器
+// 职责：协调后台同步任务，响应实时事件
 type Runner struct {
-	orchestrator *sync.Orchestrator
-	store        *store.Store
+	store         *store.Store
+	config        *ragflow.Config
+	ragflowClient *ragflow.Client
+	orchestrator  *pluginsync.Orchestrator
 
-	// 控制
-	cancelFunc context.CancelFunc
-	running    bool
+	// 运行状态
+	running atomic.Bool
+	stopCh  chan struct{}
+	wg      sync.WaitGroup
+
+	// 配置
+	syncInterval time.Duration
+	batchSize    int
 }
 
-// NewRunner 创建 RAGFlow 同步 Runner
-// 如果 RAGFlow 未配置，返回 nil
-func NewRunner(s *store.Store, ragflowConfig *ragflow.Config) *Runner {
-	// 检查 RAGFlow 配置是否有效
-	if ragflowConfig == nil || ragflowConfig.BaseURL == "" || ragflowConfig.APIKey == "" {
-		slog.Info("RAGFlow 未配置，同步功能已禁用")
-		return nil
-	}
-
-	// 验证配置
-	if err := ragflowConfig.Validate(); err != nil {
-		slog.Error("RAGFlow 配置无效，同步功能已禁用", slog.Any("error", err))
+// NewRunner 创建同步运行器
+func NewRunner(s *store.Store, config *ragflow.Config) *Runner {
+	if config == nil {
 		return nil
 	}
 
 	// 创建 RAGFlow 客户端
-	client := ragflow.NewClient(ragflowConfig.WithDefaults())
+	client := ragflow.NewClient(config)
 
-	// 创建编排器
-	orchestrator := sync.NewOrchestrator(s, client, nil)
+	// 创建 Orchestrator
+	orchestratorConfig := pluginsync.DefaultOrchestratorConfig()
+	orchestrator := pluginsync.NewOrchestrator(s, client, orchestratorConfig)
 
 	return &Runner{
-		orchestrator: orchestrator,
-		store:        s,
+		store:         s,
+		config:        config,
+		ragflowClient: client,
+		orchestrator:  orchestrator,
+		stopCh:        make(chan struct{}),
+		syncInterval:  5 * time.Minute, // 默认 5 分钟同步一次
+		batchSize:     50,              // 默认每批 50 条
 	}
 }
 
 // ==================== 生命周期管理 ====================
 
-// Start 启动后台同步任务
-func (r *Runner) Start(ctx context.Context) {
-	if r == nil {
+// Run 启动运行器主循环
+func (r *Runner) Run(ctx context.Context) {
+	if r == nil || r.config == nil {
 		return
 	}
 
-	if r.running {
-		slog.Warn("RAGFlow 同步任务已在运行中")
+	if !r.running.CompareAndSwap(false, true) {
+		slog.Warn("RAGFlow sync runner is already running")
 		return
 	}
+	defer r.running.Store(false)
 
-	// 创建可取消的上下文
-	runCtx, cancel := context.WithCancel(ctx)
-	r.cancelFunc = cancel
-	r.running = true
+	slog.Info("RAGFlow sync runner started",
+		slog.Duration("interval", r.syncInterval),
+		slog.Int("batchSize", r.batchSize))
 
-	slog.Info("RAGFlow 同步后台任务启动",
-		slog.Duration("syncInterval", r.orchestrator.GetSyncInterval()))
+	// 启动时执行一次完整同步
+	r.runSyncCycle(ctx)
 
-	// 启动后台健康检查
-	healthCancelFunc := r.orchestrator.GetHealthChecker().StartBackgroundCheck(runCtx)
-
-	// 启动定时同步任务
-	go r.runSyncLoop(runCtx, healthCancelFunc)
-}
-
-// Stop 停止后台同步任务
-func (r *Runner) Stop() {
-	if r == nil || !r.running {
-		return
-	}
-
-	slog.Info("正在停止 RAGFlow 同步后台任务...")
-	if r.cancelFunc != nil {
-		r.cancelFunc()
-	}
-	r.running = false
-	slog.Info("RAGFlow 同步后台任务已停止")
-}
-
-// IsRunning 返回任务是否正在运行
-func (r *Runner) IsRunning() bool {
-	if r == nil {
-		return false
-	}
-	return r.running
-}
-
-// ==================== 同步循环 ====================
-
-// runSyncLoop 运行同步循环
-func (r *Runner) runSyncLoop(ctx context.Context, healthCancelFunc context.CancelFunc) {
-	defer func() {
-		// 停止健康检查
-		if healthCancelFunc != nil {
-			healthCancelFunc()
-		}
-		r.running = false
-	}()
-
-	syncInterval := r.orchestrator.GetSyncInterval()
-	ticker := time.NewTicker(syncInterval)
+	ticker := time.NewTicker(r.syncInterval)
 	defer ticker.Stop()
-
-	// 启动时执行一次同步
-	r.runSync(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("RAGFlow 同步循环收到停止信号")
+			slog.Info("RAGFlow sync runner stopping due to context cancellation")
+			return
+		case <-r.stopCh:
+			slog.Info("RAGFlow sync runner stopping due to stop signal")
 			return
 		case <-ticker.C:
-			r.runSync(ctx)
+			r.runSyncCycle(ctx)
 		}
 	}
 }
 
-// runSync 执行一次同步
-func (r *Runner) runSync(ctx context.Context) {
-	slog.Debug("开始执行定时同步...")
-
-	if err := r.orchestrator.RunBatchSync(ctx); err != nil {
-		slog.Error("批量同步执行失败", slog.Any("error", err))
+// Stop 停止运行器
+func (r *Runner) Stop() {
+	if r == nil {
+		return
 	}
+	close(r.stopCh)
+	r.wg.Wait()
 }
 
-// ==================== 手动控制 ====================
+// IsRunning 检查运行器是否正在运行
+func (r *Runner) IsRunning() bool {
+	if r == nil {
+		return false
+	}
+	return r.running.Load()
+}
+
+// ==================== 同步循环 ====================
+
+// runSyncCycle 执行一次同步循环
+func (r *Runner) runSyncCycle(ctx context.Context) {
+	if r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	defer r.wg.Done()
+
+	startTime := time.Now()
+	slog.Debug("Starting RAGFlow sync cycle")
+
+	// 执行批量同步
+	if err := r.orchestrator.RunBatchSync(ctx); err != nil {
+		slog.Error("RAGFlow sync cycle failed", slog.Any("error", err))
+		return
+	}
+
+	duration := time.Since(startTime)
+	slog.Info("RAGFlow sync cycle completed", slog.Duration("duration", duration))
+}
 
 // TriggerSync 手动触发一次同步
 func (r *Runner) TriggerSync(ctx context.Context) error {
-	if r == nil {
+	if r == nil || r.orchestrator == nil {
 		return nil
 	}
 
-	slog.Info("手动触发 RAGFlow 同步...")
-	return r.orchestrator.RunBatchSync(ctx)
+	r.wg.Add(1)
+	defer r.wg.Done()
+
+	slog.Info("Manual sync triggered")
+	r.runSyncCycle(ctx)
+	return nil
+}
+
+// ==================== 实时事件处理 ====================
+
+// OnMemoCreated 处理 Memo 创建事件
+func (r *Runner) OnMemoCreated(ctx context.Context, memo *store.Memo) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		event := &pluginsync.SyncEvent{
+			Type:        pluginsync.SyncEventCreate,
+			ContentType: store.ContentTypeMemo,
+			ContentUID:  memo.UID,
+			UserID:      memo.CreatorID,
+			Timestamp:   time.Now(),
+		}
+
+		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+			slog.Error("处理 Memo 创建事件失败",
+				slog.String("memoUID", memo.UID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnMemoUpdated 处理 Memo 更新事件
+func (r *Runner) OnMemoUpdated(ctx context.Context, memo *store.Memo) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		event := &pluginsync.SyncEvent{
+			Type:        pluginsync.SyncEventUpdate,
+			ContentType: store.ContentTypeMemo,
+			ContentUID:  memo.UID,
+			UserID:      memo.CreatorID,
+			Timestamp:   time.Now(),
+		}
+
+		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+			slog.Error("处理 Memo 更新事件失败",
+				slog.String("memoUID", memo.UID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnMemoDeleted 处理 Memo 删除事件
+func (r *Runner) OnMemoDeleted(ctx context.Context, memoUID string) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		event := &pluginsync.SyncEvent{
+			Type:        pluginsync.SyncEventDelete,
+			ContentType: store.ContentTypeMemo,
+			ContentUID:  memoUID,
+			Timestamp:   time.Now(),
+		}
+
+		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+			slog.Error("处理 Memo 删除事件失败",
+				slog.String("memoUID", memoUID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnMemoVisibilityChanged 处理 Memo 可见性变更事件
+func (r *Runner) OnMemoVisibilityChanged(ctx context.Context, memoUID string, visibility store.Visibility) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		if err := r.orchestrator.HandleVisibilityChange(ctx, memoUID, visibility); err != nil {
+			slog.Error("处理 Memo 可见性变更事件失败",
+				slog.String("memoUID", memoUID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnAttachmentCreated 处理附件创建事件
+func (r *Runner) OnAttachmentCreated(ctx context.Context, attachment *store.Attachment) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		event := &pluginsync.SyncEvent{
+			Type:        pluginsync.SyncEventCreate,
+			ContentType: store.ContentTypeAttachment,
+			ContentUID:  attachment.UID,
+			UserID:      attachment.CreatorID,
+			Timestamp:   time.Now(),
+		}
+
+		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+			slog.Error("处理附件创建事件失败",
+				slog.String("attachmentUID", attachment.UID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnAttachmentDeleted 处理附件删除事件
+func (r *Runner) OnAttachmentDeleted(ctx context.Context, attachmentUID string) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		event := &pluginsync.SyncEvent{
+			Type:        pluginsync.SyncEventDelete,
+			ContentType: store.ContentTypeAttachment,
+			ContentUID:  attachmentUID,
+			Timestamp:   time.Now(),
+		}
+
+		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+			slog.Error("处理附件删除事件失败",
+				slog.String("attachmentUID", attachmentUID),
+				slog.Any("error", err))
+		}
+	}()
+}
+
+// OnUserDeleted 处理用户删除事件
+func (r *Runner) OnUserDeleted(ctx context.Context, userID int32) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+
+		if err := r.orchestrator.HandleUserDeletion(ctx, userID); err != nil {
+			slog.Error("处理用户删除事件失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+		}
+	}()
 }
 
 // ==================== 状态查询 ====================
 
-// GetOrchestrator 获取编排器（用于高级操作）
-func (r *Runner) GetOrchestrator() *sync.Orchestrator {
-	if r == nil {
-		return nil
-	}
-	return r.orchestrator
-}
-
 // GetHealthStatus 获取健康状态
-func (r *Runner) GetHealthStatus() *sync.HealthStatus {
-	if r == nil {
+func (r *Runner) GetHealthStatus() *pluginsync.HealthStatus {
+	if r == nil || r.orchestrator == nil {
 		return nil
 	}
 	status := r.orchestrator.GetHealthStatus()
@@ -176,200 +327,17 @@ func (r *Runner) GetHealthStatus() *sync.HealthStatus {
 }
 
 // GetSyncStats 获取同步统计
-func (r *Runner) GetSyncStats(ctx context.Context) (*sync.SyncStats, error) {
-	if r == nil {
+func (r *Runner) GetSyncStats(ctx context.Context) (*pluginsync.SyncStats, error) {
+	if r == nil || r.orchestrator == nil {
 		return nil, nil
 	}
 	return r.orchestrator.GetSyncStats(ctx)
 }
 
-// ==================== 事件处理入口 ====================
-
-// OnMemoCreated Memo 创建事件处理
-func (r *Runner) OnMemoCreated(ctx context.Context, memo *store.Memo) {
-	if r == nil || r.orchestrator == nil {
-		return
+// GetOrchestrator 获取 Orchestrator（用于服务层访问）
+func (r *Runner) GetOrchestrator() *pluginsync.Orchestrator {
+	if r == nil {
+		return nil
 	}
-
-	// 创建同步状态记录
-	if err := r.orchestrator.GetMemoSyncer().CreateSyncStateForNewMemo(ctx, memo); err != nil {
-		slog.Error("创建 Memo 同步状态失败",
-			slog.String("memoUID", memo.UID),
-			slog.Any("error", err))
-		return
-	}
-
-	// 尝试立即同步（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		event := &sync.SyncEvent{
-			Type:        sync.SyncEventCreate,
-			ContentType: store.ContentTypeMemo,
-			ContentUID:  memo.UID,
-			UserID:      memo.CreatorID,
-			Timestamp:   time.Now(),
-		}
-
-		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
-			slog.Warn("Memo 同步失败，将在下次批量同步时重试",
-				slog.String("memoUID", memo.UID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnMemoUpdated Memo 更新事件处理
-func (r *Runner) OnMemoUpdated(ctx context.Context, memo *store.Memo) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 标记需要重新同步
-	if err := r.orchestrator.GetMemoSyncer().MarkMemoForResync(ctx, memo.UID, memo.Content); err != nil {
-		slog.Error("标记 Memo 重新同步失败",
-			slog.String("memoUID", memo.UID),
-			slog.Any("error", err))
-		return
-	}
-
-	// 尝试立即同步（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		event := &sync.SyncEvent{
-			Type:        sync.SyncEventUpdate,
-			ContentType: store.ContentTypeMemo,
-			ContentUID:  memo.UID,
-			UserID:      memo.CreatorID,
-			Timestamp:   time.Now(),
-		}
-
-		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
-			slog.Warn("Memo 更新同步失败，将在下次批量同步时重试",
-				slog.String("memoUID", memo.UID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnMemoDeleted Memo 删除事件处理
-func (r *Runner) OnMemoDeleted(ctx context.Context, memoUID string) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 同步删除（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := r.orchestrator.GetMemoSyncer().DeleteMemoFromRAGFlow(syncCtx, memoUID); err != nil {
-			slog.Error("从 RAGFlow 删除 Memo 失败",
-				slog.String("memoUID", memoUID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnMemoVisibilityChanged Memo visibility 变更事件处理
-func (r *Runner) OnMemoVisibilityChanged(ctx context.Context, memoUID string, newVisibility store.Visibility) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 处理 visibility 变更（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := r.orchestrator.HandleVisibilityChange(syncCtx, memoUID, newVisibility); err != nil {
-			slog.Warn("更新 Memo visibility 失败",
-				slog.String("memoUID", memoUID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnAttachmentCreated 附件创建事件处理
-func (r *Runner) OnAttachmentCreated(ctx context.Context, attachment *store.Attachment) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 创建同步状态记录
-	if err := r.orchestrator.GetAttachmentSyncer().CreateSyncStateForNewAttachment(ctx, attachment); err != nil {
-		slog.Error("创建附件同步状态失败",
-			slog.String("attachmentUID", attachment.UID),
-			slog.Any("error", err))
-		return
-	}
-
-	// 检查是否为可解析类型，如果是则尝试立即同步
-	if !sync.IsParseableAttachment(attachment.Type) {
-		slog.Debug("附件类型不支持解析，已标记为跳过",
-			slog.String("attachmentUID", attachment.UID),
-			slog.String("type", attachment.Type))
-		return
-	}
-
-	// 尝试立即同步（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second) // 附件可能较大，给更多时间
-		defer cancel()
-
-		event := &sync.SyncEvent{
-			Type:        sync.SyncEventCreate,
-			ContentType: store.ContentTypeAttachment,
-			ContentUID:  attachment.UID,
-			UserID:      attachment.CreatorID,
-			Timestamp:   time.Now(),
-		}
-
-		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
-			slog.Warn("附件同步失败，将在下次批量同步时重试",
-				slog.String("attachmentUID", attachment.UID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnAttachmentDeleted 附件删除事件处理
-func (r *Runner) OnAttachmentDeleted(ctx context.Context, attachmentUID string) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 同步删除（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := r.orchestrator.GetAttachmentSyncer().DeleteAttachmentFromRAGFlow(syncCtx, attachmentUID); err != nil {
-			slog.Error("从 RAGFlow 删除附件失败",
-				slog.String("attachmentUID", attachmentUID),
-				slog.Any("error", err))
-		}
-	}()
-}
-
-// OnUserDeleted 用户删除事件处理
-func (r *Runner) OnUserDeleted(ctx context.Context, userID int32) {
-	if r == nil || r.orchestrator == nil {
-		return
-	}
-
-	// 清理用户的 RAGFlow 资源（异步）
-	go func() {
-		syncCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		if err := r.orchestrator.HandleUserDeletion(syncCtx, userID); err != nil {
-			slog.Error("清理用户 RAGFlow 资源失败",
-				slog.Int("userID", int(userID)),
-				slog.Any("error", err))
-		}
-	}()
+	return r.orchestrator
 }
