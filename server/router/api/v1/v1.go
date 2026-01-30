@@ -11,8 +11,8 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/usememos/memos/internal/profile"
-	"github.com/usememos/memos/plugin/llm"
 	"github.com/usememos/memos/plugin/markdown"
+	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
@@ -33,13 +33,13 @@ type APIV1Service struct {
 	Profile         *profile.Profile
 	Store           *store.Store
 	MarkdownService markdown.Service
-	LLMManager      *llm.Manager
+	RAGFlowClient   *ragflow.Client // 替代原有的 LLMManager
 
 	// thumbnailSemaphore limits concurrent thumbnail generation to prevent memory exhaustion
 	thumbnailSemaphore *semaphore.Weighted
 }
 
-func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, llmManager *llm.Manager) *APIV1Service {
+func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client) *APIV1Service {
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
@@ -48,7 +48,7 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 		Profile:            profile,
 		Store:              store,
 		MarkdownService:    markdownService,
-		LLMManager:         llmManager,
+		RAGFlowClient:      ragflowClient,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
 }

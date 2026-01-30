@@ -16,9 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/usememos/memos/internal/profile"
-	"github.com/usememos/memos/plugin/llm"
-	"github.com/usememos/memos/plugin/llm/deepseek"
-	"github.com/usememos/memos/plugin/llm/openai"
+	"github.com/usememos/memos/plugin/ragflow"
 	storepb "github.com/usememos/memos/proto/gen/store"
 	apiv1 "github.com/usememos/memos/server/router/api/v1"
 	"github.com/usememos/memos/server/router/fileserver"
@@ -71,10 +69,10 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 
 	rootGroup := echoServer.Group("")
 
-	// Initialize LLM manager
-	llmManager := initLLMManager()
+	// Initialize RAGFlow client (替代原有的 LLM Manager)
+	ragflowClient := initRAGFlowClient(profile)
 
-	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, llmManager)
+	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient)
 
 	// Register HTTP file server routes BEFORE gRPC-Gateway to ensure proper range request handling for Safari.
 	// This uses native HTTP serving (http.ServeContent) instead of gRPC for video/audio files.
@@ -188,51 +186,51 @@ func (s *Server) getOrUpsertInstanceBasicSetting(ctx context.Context) (*storepb.
 	return instanceBasicSetting, nil
 }
 
-// initLLMManager initializes the LLM manager with configured providers.
-func initLLMManager() *llm.Manager {
-	manager := llm.NewManager()
-
-	// Check for OpenAI API key
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-	if openaiAPIKey != "" {
-		openaiClient := openai.NewClient(openaiAPIKey)
-		manager.Register(openaiClient)
-		slog.Info("registered LLM provider", "provider", "openai")
+// initRAGFlowClient 初始化 RAGFlow 客户端
+// 替代原有的 initLLMManager 函数
+func initRAGFlowClient(p *profile.Profile) *ragflow.Client {
+	// 从环境变量读取配置（优先），否则使用 Profile 中的配置
+	baseURL := os.Getenv("MEMOS_RAGFLOW_BASE_URL")
+	if baseURL == "" {
+		baseURL = p.RAGFlowBaseURL
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:9380" // 默认值
 	}
 
-	// Check for DeepSeek API key
-	deepseekAPIKey := os.Getenv("DEEPSEEK_API_KEY")
-	if deepseekAPIKey != "" {
-		deepseekClient := deepseek.NewClient(deepseekAPIKey)
-		manager.Register(deepseekClient)
-		slog.Info("registered LLM provider", "provider", "deepseek")
+	apiKey := os.Getenv("MEMOS_RAGFLOW_API_KEY")
+	if apiKey == "" {
+		apiKey = p.RAGFlowAPIKey
 	}
 
-	// Set defaults based on available providers
-	defaultProvider := os.Getenv("MEMOS_AI_PROVIDER")
-	defaultModel := os.Getenv("MEMOS_AI_MODEL")
-
-	if defaultProvider == "" {
-		if openaiAPIKey != "" {
-			defaultProvider = "openai"
-			if defaultModel == "" {
-				defaultModel = "gpt-4o-mini"
-			}
-		} else if deepseekAPIKey != "" {
-			defaultProvider = "deepseek"
-			if defaultModel == "" {
-				defaultModel = "deepseek-chat"
-			}
-		}
+	assistantID := os.Getenv("MEMOS_RAGFLOW_ASSISTANT_ID")
+	if assistantID == "" {
+		assistantID = p.RAGFlowAssistantID
 	}
 
-	manager.SetDefaults(defaultProvider, defaultModel)
-
-	// Enable AI if any provider is configured
-	if openaiAPIKey != "" || deepseekAPIKey != "" {
-		manager.SetEnabled(true)
-		slog.Info("AI feature enabled", "defaultProvider", defaultProvider, "defaultModel", defaultModel)
+	// 如果没有配置 API Key，返回 nil（AI 功能禁用）
+	if apiKey == "" {
+		slog.Warn("RAGFlow API key not configured, AI features disabled")
+		return nil
 	}
 
-	return manager
+	cfg := &ragflow.Config{
+		BaseURL:     baseURL,
+		APIKey:      apiKey,
+		AssistantID: assistantID,
+	}
+	cfg.WithDefaults()
+
+	if err := cfg.Validate(); err != nil {
+		slog.Error("RAGFlow configuration invalid", "error", err)
+		return nil
+	}
+
+	client := ragflow.NewClient(cfg)
+	slog.Info("RAGFlow client initialized",
+		"baseURL", baseURL,
+		"assistantID", assistantID,
+	)
+
+	return client
 }

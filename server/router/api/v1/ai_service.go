@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/usememos/memos/internal/util"
-	"github.com/usememos/memos/plugin/llm"
+	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
@@ -34,19 +34,9 @@ func (s *APIV1Service) CreateConversation(ctx context.Context, req *v1pb.CreateC
 		title = "New Chat"
 	}
 
+	// RAGFlow 模式下，provider 和 model 由 RAGFlow 服务管理
 	model := req.Model
-	provider := req.Provider
-
-	// Use defaults if not specified
-	if s.LLMManager != nil {
-		defaultProvider, defaultModel := s.LLMManager.GetDefaults()
-		if provider == "" {
-			provider = defaultProvider
-		}
-		if model == "" {
-			model = defaultModel
-		}
-	}
+	provider := "ragflow"
 
 	conversation := &store.AIConversation{
 		UID:      util.GenUUID(),
@@ -59,6 +49,19 @@ func (s *APIV1Service) CreateConversation(ctx context.Context, req *v1pb.CreateC
 	created, err := s.Store.CreateAIConversation(ctx, conversation)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create conversation: %v", err)
+	}
+
+	// 如果 RAGFlow 客户端可用，在 RAGFlow 中创建对应的会话
+	if s.RAGFlowClient != nil {
+		assistantID := s.RAGFlowClient.GetConfig().AssistantID
+		if assistantID != "" {
+			session, err := s.RAGFlowClient.CreateSession(ctx, assistantID, title)
+			if err == nil {
+				// 存储 RAGFlow session ID 到 conversation（可选：扩展数据库字段）
+				// 目前使用 UID 作为映射标识
+				_ = session // TODO: 可以将 session.ID 存储到扩展字段
+			}
+		}
 	}
 
 	return convertConversationToProto(created, user.Username), nil
@@ -211,15 +214,15 @@ func (s *APIV1Service) UpdateConversation(ctx context.Context, req *v1pb.UpdateC
 	return s.GetConversation(ctx, &v1pb.GetConversationRequest{ConversationId: req.ConversationId})
 }
 
-// SendMessage sends a message and gets AI response.
+// SendMessage sends a message and gets AI response via RAGFlow.
 func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageRequest) (*v1pb.SendMessageResponse, error) {
 	userID := auth.GetUserID(ctx)
 	if userID == 0 {
 		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 	}
 
-	if s.LLMManager == nil || !s.LLMManager.IsEnabled() {
-		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled")
+	if s.RAGFlowClient == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled (RAGFlow not configured)")
 	}
 
 	// Get conversation
@@ -250,41 +253,22 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.Internal, "failed to save user message: %v", err)
 	}
 
-	// Fetch conversation history
-	messages, err := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
-		ConversationID: &conversation.ID,
-	})
+	// 调用 RAGFlow Chat API
+	assistantID := s.RAGFlowClient.GetConfig().AssistantID
+	if assistantID == "" {
+		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured")
+	}
+
+	// 使用会话 UID 作为 RAGFlow session ID（简化映射）
+	chatReq := &ragflow.ChatRequest{
+		SessionID: conversation.UID,
+		Question:  req.Content,
+		Stream:    false,
+	}
+
+	chatResp, err := s.RAGFlowClient.Chat(ctx, assistantID, chatReq)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to list messages: %v", err)
-	}
-
-	// Build LLM request
-	llmMessages := make([]llm.Message, len(messages))
-	for i, m := range messages {
-		llmMessages[i] = llm.Message{
-			Role:    string(m.Role),
-			Content: m.Content,
-		}
-	}
-
-	// Get provider
-	provider, err := s.LLMManager.GetProvider(conversation.Provider)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get LLM provider: %v", err)
-	}
-
-	model := conversation.Model
-	if model == "" {
-		_, model = s.LLMManager.GetDefaults()
-	}
-
-	// Call LLM
-	llmResp, err := provider.Complete(ctx, &llm.CompletionRequest{
-		Model:    model,
-		Messages: llmMessages,
-	})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get AI response: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to get AI response from RAGFlow: %v", err)
 	}
 
 	// Save assistant message
@@ -292,17 +276,21 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		UID:            util.GenUUID(),
 		ConversationID: conversation.ID,
 		Role:           store.AIMessageRoleAssistant,
-		Content:        llmResp.Content,
-		TokenCount:     int32(llmResp.TokenCount),
+		Content:        chatResp.Answer,
+		TokenCount:     0, // RAGFlow 不直接返回 token count
 	}
 	assistantMessage, err = s.Store.CreateAIMessage(ctx, assistantMessage)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to save assistant message: %v", err)
 	}
 
-	// Update conversation title if it's the first message
-	if len(messages) == 1 {
-		// Generate title from first user message (truncate if too long)
+	// Fetch existing messages count for title update
+	messages, _ := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
+		ConversationID: &conversation.ID,
+	})
+
+	// Update conversation title if it's the first exchange
+	if len(messages) <= 2 {
 		title := req.Content
 		if len(title) > 50 {
 			title = title[:50] + "..."
@@ -360,31 +348,28 @@ func (s *APIV1Service) ListMessages(ctx context.Context, req *v1pb.ListMessagesR
 	}, nil
 }
 
-// GetAIConfig returns available AI providers and models.
+// GetAIConfig returns AI configuration (RAGFlow mode).
 func (s *APIV1Service) GetAIConfig(ctx context.Context, _ *v1pb.GetAIConfigRequest) (*v1pb.GetAIConfigResponse, error) {
-	if s.LLMManager == nil {
+	if s.RAGFlowClient == nil {
 		return &v1pb.GetAIConfigResponse{
 			Enabled: false,
 		}, nil
 	}
 
-	defaultProvider, defaultModel := s.LLMManager.GetDefaults()
-	providers := s.LLMManager.ListProviders()
-
-	protoProviders := make([]*v1pb.AIProvider, len(providers))
-	for i, p := range providers {
-		protoProviders[i] = &v1pb.AIProvider{
-			Name:        p.Name(),
-			DisplayName: p.DisplayName(),
-			Models:      p.Models(),
-		}
+	// RAGFlow 模式下，只有一个 provider
+	protoProviders := []*v1pb.AIProvider{
+		{
+			Name:        "ragflow",
+			DisplayName: "RAGFlow",
+			Models:      []string{"default"}, // RAGFlow 内部管理模型
+		},
 	}
 
 	return &v1pb.GetAIConfigResponse{
-		Enabled:         s.LLMManager.IsEnabled(),
+		Enabled:         true,
 		Providers:       protoProviders,
-		DefaultProvider: defaultProvider,
-		DefaultModel:    defaultModel,
+		DefaultProvider: "ragflow",
+		DefaultModel:    "default",
 	}, nil
 }
 
