@@ -10,7 +10,7 @@ tmp_dir = "tmp"
   exclude_regex = ["_test.go"]
   exclude_unchanged = false
   follow_symlink = false
-  full_bin = "DEEPSEEK_API_KEY='sk-a36c5decc0eb4f1fac59c81dcc94be07' ./tmp/memos --mode dev --port 8081"
+  full_bin = "DEEPSEEK_API_KEY='sk-a36c5decc0eb4f1fac59c81dcc94be07' ./tmp/memos  --port 8081"
   include_dir = []
   include_ext = ["go", "tpl", "tmpl", "html"]
   kill_delay = "0s"

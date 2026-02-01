@@ -327,6 +327,7 @@
       "delete-success": "Shortcut `{{title}}` deleted successfully"
     },
     "sso": "SSO",
+    "ragflow": "RAGFlow Sync",
     "sso-section": {
       "authorization-endpoint": "Authorization endpoint",
       "client-id": "Client ID",

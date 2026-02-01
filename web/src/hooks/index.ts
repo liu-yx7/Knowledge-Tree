@@ -7,5 +7,6 @@ export * from "./useMediaQuery";
 export * from "./useMemoFilters";
 export * from "./useMemoSorting";
 export * from "./useNavigateTo";
+export * from "./useRAGFlowQueries";
 export * from "./useUserLocale";
 export * from "./useUserTheme";
