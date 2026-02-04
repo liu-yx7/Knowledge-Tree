@@ -43,6 +43,7 @@ func (s *ConnectServiceHandler) RegisterConnectHandlers(mux *http.ServeMux, opts
 		wrap(apiv1connect.NewActivityServiceHandler(s, opts...)),
 		wrap(apiv1connect.NewIdentityProviderServiceHandler(s, opts...)),
 		wrap(apiv1connect.NewAIServiceHandler(s, opts...)),
+		wrap(apiv1connect.NewRAGFlowServiceHandler(s, opts...)), // 🆕 添加 RAGFlowService
 	}
 
 	for _, h := range handlers {

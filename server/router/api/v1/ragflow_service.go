@@ -139,23 +139,38 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 	}
 
+	// 检查 RAGFlow 服务是否已启用
 	if s.RAGFlowClient == nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow is not enabled")
+		slog.Debug("RAGFlow client not configured, returning empty results")
+		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
 	if req.Query == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "query is required")
 	}
 
-	// 获取用户的 Dataset ID
-	if s.RAGFlowSyncRunner == nil || s.RAGFlowSyncRunner.GetOrchestrator() == nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow sync is not enabled")
+	// 检查 RAGFlow Sync Runner 是否已启用
+	if s.RAGFlowSyncRunner == nil {
+		slog.Debug("RAGFlow sync runner not configured, returning empty results")
+		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
-	datasetID, err := s.RAGFlowSyncRunner.GetOrchestrator().GetUserDatasetID(ctx, userID)
+	orchestrator := s.RAGFlowSyncRunner.GetOrchestrator()
+	if orchestrator == nil {
+		slog.Debug("RAGFlow orchestrator not available, returning empty results")
+		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
+	}
+
+	// 获取用户的 Dataset ID
+	datasetID, err := orchestrator.GetUserDatasetID(ctx, userID)
 	if err != nil {
 		// 用户可能还没有任何内容同步，返回空结果
-		slog.Debug("用户没有 RAGFlow Dataset", slog.Int("userID", int(userID)))
+		slog.Debug("用户没有 RAGFlow Dataset", slog.Int("userID", int(userID)), slog.Any("error", err))
+		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
+	}
+
+	if datasetID == "" {
+		slog.Debug("用户的 Dataset ID 为空", slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 

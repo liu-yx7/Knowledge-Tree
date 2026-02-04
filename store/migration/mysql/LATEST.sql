@@ -147,3 +147,76 @@ CREATE TABLE `subscription` (
   INDEX `idx_subscription_follower_id` (`follower_id`),
   INDEX `idx_subscription_following_id` (`following_id`)
 );
+
+-- ==================== RAGFlow 用户映射表 ====================
+-- 记录用户与 RAGFlow Dataset/Assistant 的映射关系
+
+CREATE TABLE `ragflow_user_mapping` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL UNIQUE,
+  `dataset_id` VARCHAR(255) NOT NULL,
+  `dataset_name` VARCHAR(255) NOT NULL DEFAULT '',
+  `assistant_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `document_count` INT NOT NULL DEFAULT 0,
+  `last_sync_ts` BIGINT,
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
+  INDEX `idx_ragflow_user_mapping_user_id` (`user_id`)
+);
+
+-- ==================== 内容同步状态表 ====================
+-- 记录每个内容项（Memo/Attachment）的 RAGFlow 同步状态
+
+CREATE TABLE `content_sync_state` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `content_type` ENUM('memo', 'attachment') NOT NULL,
+  `content_uid` VARCHAR(255) NOT NULL,
+  `owner_id` INT NOT NULL,
+  `ragflow_status` ENUM('pending', 'synced', 'failed', 'skipped') NOT NULL DEFAULT 'pending',
+  `ragflow_dataset_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_document_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_synced_ts` BIGINT,
+  `ragflow_error` TEXT NOT NULL,
+  `content_hash` VARCHAR(64) NOT NULL DEFAULT '',
+  `retry_count` INT NOT NULL DEFAULT 0,
+  `next_retry_ts` BIGINT,
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  UNIQUE(`content_type`, `content_uid`),
+  INDEX `idx_content_sync_state_owner_id` (`owner_id`),
+  INDEX `idx_content_sync_state_status` (`ragflow_status`)
+);
+
+-- ==================== RAGFlow 对话表 ====================
+-- 存储用户与 RAGFlow Chat Assistant 的对话
+
+CREATE TABLE `ragflow_conversation` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `uid` VARCHAR(255) NOT NULL UNIQUE,
+  `user_id` INT NOT NULL,
+  `ragflow_session_id` VARCHAR(255) NOT NULL,
+  `title` VARCHAR(255) NOT NULL DEFAULT '',
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `row_status` VARCHAR(10) NOT NULL DEFAULT 'NORMAL',
+  FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
+  INDEX `idx_ragflow_conversation_user_id` (`user_id`),
+  INDEX `idx_ragflow_conversation_session_id` (`ragflow_session_id`)
+);
+
+-- ==================== RAGFlow 消息表 ====================
+-- 存储对话中的消息
+
+CREATE TABLE `ragflow_message` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `uid` VARCHAR(255) NOT NULL UNIQUE,
+  `conversation_id` INT NOT NULL,
+  `role` VARCHAR(10) NOT NULL,
+  `content` TEXT NOT NULL,
+  `references_json` JSON NOT NULL,
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  FOREIGN KEY (`conversation_id`) REFERENCES `ragflow_conversation`(`id`) ON DELETE CASCADE,
+  INDEX `idx_ragflow_message_conversation_id` (`conversation_id`),
+  INDEX `idx_ragflow_message_created_ts` (`created_ts`)
+);
