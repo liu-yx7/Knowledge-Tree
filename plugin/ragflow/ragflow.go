@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 )
@@ -161,14 +162,31 @@ func (c *Client) DeleteDataset(ctx context.Context, id string) error {
 
 // UploadDocument 上传文档到数据集
 // RAGFlow API: POST /api/v1/datasets/{dataset_id}/documents
+// 注意：必须使用 multipart/form-data 格式，表单字段名为 "file"
+// 返回值：RAGFlow 返回的是数组（支持批量上传），这里只取第一个
 func (c *Client) UploadDocument(ctx context.Context, datasetID string, doc *Document) (*DocumentInfo, error) {
-	// 构建 multipart 请求
 	path := fmt.Sprintf("/api/v1/datasets/%s/documents", datasetID)
 	url := c.config.BaseURL + path
 
-	// 创建请求体
+	// 构建 multipart/form-data 请求体
 	body := &bytes.Buffer{}
-	body.Write(doc.Content)
+	writer := multipart.NewWriter(body)
+
+	// 创建 file 字段
+	part, err := writer.CreateFormFile("file", doc.Name)
+	if err != nil {
+		return nil, fmt.Errorf("创建表单文件字段失败: %w", err)
+	}
+
+	// 写入文件内容
+	if _, err := part.Write(doc.Content); err != nil {
+		return nil, fmt.Errorf("写入文件内容失败: %w", err)
+	}
+
+	// 关闭 writer 以完成 multipart 消息
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("关闭 multipart writer 失败: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
@@ -176,15 +194,24 @@ func (c *Client) UploadDocument(ctx context.Context, datasetID string, doc *Docu
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	req.Header.Set("Content-Type", doc.MimeType)
-	req.Header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, doc.Name))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return decodeResponse[DocumentInfo](resp)
+	// RAGFlow 返回数组格式，需要解析为 []DocumentInfo
+	docs, err := decodeResponse[[]DocumentInfo](resp)
+	if err != nil {
+		return nil, err
+	}
+
+	if docs == nil || len(*docs) == 0 {
+		return nil, fmt.Errorf("上传成功但未返回文档信息")
+	}
+
+	return &(*docs)[0], nil
 }
 
 // ListDocuments 列出数据集中的文档

@@ -139,9 +139,14 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 	}
 
+	slog.Info("SemanticSearch 请求开始",
+		slog.Int("userID", int(userID)),
+		slog.String("query", req.Query))
+
 	// 检查 RAGFlow 服务是否已启用
 	if s.RAGFlowClient == nil {
-		slog.Debug("RAGFlow client not configured, returning empty results")
+		slog.Warn("SemanticSearch: RAGFlow client not configured, returning empty results",
+			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
@@ -151,13 +156,15 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 
 	// 检查 RAGFlow Sync Runner 是否已启用
 	if s.RAGFlowSyncRunner == nil {
-		slog.Debug("RAGFlow sync runner not configured, returning empty results")
+		slog.Warn("SemanticSearch: RAGFlow sync runner not configured, returning empty results",
+			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
 	orchestrator := s.RAGFlowSyncRunner.GetOrchestrator()
 	if orchestrator == nil {
-		slog.Debug("RAGFlow orchestrator not available, returning empty results")
+		slog.Warn("SemanticSearch: RAGFlow orchestrator not available, returning empty results",
+			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
@@ -165,14 +172,21 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 	datasetID, err := orchestrator.GetUserDatasetID(ctx, userID)
 	if err != nil {
 		// 用户可能还没有任何内容同步，返回空结果
-		slog.Debug("用户没有 RAGFlow Dataset", slog.Int("userID", int(userID)), slog.Any("error", err))
+		slog.Warn("SemanticSearch: 用户没有 RAGFlow Dataset，返回空结果",
+			slog.Int("userID", int(userID)),
+			slog.Any("error", err))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
 	if datasetID == "" {
-		slog.Debug("用户的 Dataset ID 为空", slog.Int("userID", int(userID)))
+		slog.Warn("SemanticSearch: 用户的 Dataset ID 为空",
+			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
+
+	slog.Info("SemanticSearch: 找到用户 Dataset",
+		slog.Int("userID", int(userID)),
+		slog.String("datasetID", datasetID))
 
 	// 设置默认值
 	topK := int(req.TopK)
@@ -192,30 +206,57 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		SimilarityThreshold: float64(similarityThreshold),
 	}
 
+	slog.Info("SemanticSearch: 调用 RAGFlow Retrieve API",
+		slog.String("datasetID", datasetID),
+		slog.String("question", req.Query),
+		slog.Int("topK", topK),
+		slog.Float64("similarityThreshold", float64(similarityThreshold)))
+
 	retrievalResult, err := s.RAGFlowClient.Retrieve(ctx, retrieveReq)
 	if err != nil {
-		slog.Error("RAGFlow 检索失败", slog.Any("error", err))
+		slog.Error("SemanticSearch: RAGFlow 检索失败",
+			slog.Int("userID", int(userID)),
+			slog.Any("error", err))
 		return nil, status.Errorf(codes.Internal, "retrieval failed: %v", err)
 	}
+
+	// 记录检索结果
+	chunkCount := 0
+	if retrievalResult != nil {
+		chunkCount = len(retrievalResult.Chunks)
+	}
+	slog.Info("SemanticSearch: RAGFlow 返回结果",
+		slog.Int("userID", int(userID)),
+		slog.Int("chunkCount", chunkCount))
 
 	// 转换检索结果
 	results := make([]*v1pb.SearchResult, 0)
 	if retrievalResult != nil && len(retrievalResult.Chunks) > 0 {
 		for _, chunk := range retrievalResult.Chunks {
+			slog.Debug("SemanticSearch: 处理 chunk",
+				slog.String("documentName", chunk.DocumentName),
+				slog.Float64("similarity", chunk.Similarity))
+
 			// 从文档名解析 Memo UID
 			memoUID := extractMemoUIDFromDocumentName(chunk.DocumentName)
 			if memoUID == "" {
+				slog.Debug("SemanticSearch: 跳过非 Memo 文档",
+					slog.String("documentName", chunk.DocumentName))
 				continue // 跳过非 Memo 文档
 			}
 
 			// 获取 Memo 详情
 			memo, err := s.Store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 			if err != nil || memo == nil {
+				slog.Debug("SemanticSearch: Memo 不存在",
+					slog.String("memoUID", memoUID))
 				continue // 跳过不存在的 Memo
 			}
 
 			// 检查 visibility（只返回用户有权访问的内容）
 			if memo.CreatorID != userID && memo.Visibility == store.Private {
+				slog.Debug("SemanticSearch: 跳过私有 Memo",
+					slog.String("memoUID", memoUID))
 				continue // 跳过其他用户的私有内容
 			}
 
@@ -229,6 +270,10 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 			results = append(results, result)
 		}
 	}
+
+	slog.Info("SemanticSearch: 请求完成",
+		slog.Int("userID", int(userID)),
+		slog.Int("resultCount", len(results)))
 
 	return &v1pb.SemanticSearchResponse{Results: results}, nil
 }

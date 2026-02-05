@@ -40,6 +40,7 @@ type CreateDatasetRequest struct {
 }
 
 // Dataset 数据集信息
+// 注意：RAGFlow API 返回的 create_time/update_time 是毫秒级 Unix 时间戳（数字类型）
 type Dataset struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -47,8 +48,10 @@ type Dataset struct {
 	ChunkMethod   string `json:"chunk_method"`
 	ChunkCount    int    `json:"chunk_count"`
 	DocumentCount int    `json:"document_count"`
-	CreateTime    string `json:"create_time"`
-	UpdateTime    string `json:"update_time"`
+	CreateTime    int64  `json:"create_time"`  // 毫秒级 Unix 时间戳
+	UpdateTime    int64  `json:"update_time"`  // 毫秒级 Unix 时间戳
+	CreateDate    string `json:"create_date"`  // 可读日期格式
+	UpdateDate    string `json:"update_date"`  // 可读日期格式
 }
 
 // ==================== 文档相关类型 ====================
@@ -70,15 +73,18 @@ func NewTextDocument(name, content string) *Document {
 }
 
 // DocumentInfo 文档信息
+// 注意：RAGFlow 返回的时间字段可能是数字或字符串，这里使用 interface{} 兼容
 type DocumentInfo struct {
 	ID         string         `json:"id"`
 	Name       string         `json:"name"`
 	Size       int64          `json:"size"`
 	ChunkCount int            `json:"chunk_count"`
-	Status     string         `json:"status"`
-	Metadata   map[string]any `json:"meta_fields,omitempty"` // 元数据字段，用于存储 visibility 等自定义信息
-	CreateTime time.Time      `json:"create_time"`
-	UpdateTime time.Time      `json:"update_time"`
+	Status     string         `json:"run"`              // RAGFlow 使用 "run" 字段表示状态
+	Metadata   map[string]any `json:"meta_fields,omitempty"`
+	DatasetID  string         `json:"dataset_id"`
+	Location   string         `json:"location"`
+	Suffix     string         `json:"suffix"`
+	Type       string         `json:"type"`
 }
 
 // UpdateDocumentRequest 更新文档请求
