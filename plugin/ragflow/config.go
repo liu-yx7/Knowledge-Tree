@@ -30,13 +30,11 @@ type Config struct {
 	PublicKeyPath string
 }
 
-// Validate 验证配置有效性
+// Validate 验证配置有效性（系统级：只需要 BaseURL）
+// APIKey 不是启动时的必要条件，而是运行时 per-user 动态获取
 func (c *Config) Validate() error {
 	if c.BaseURL == "" {
 		return fmt.Errorf("RAGFlow BaseURL 不能为空")
-	}
-	if c.APIKey == "" {
-		return fmt.Errorf("RAGFlow APIKey 不能为空")
 	}
 	return nil
 }

@@ -20,12 +20,16 @@ import (
 
 // Client RAGFlow HTTP API 客户端
 // 职责边界：仅封装 HTTP 调用，不实现任何算法逻辑
+// 支持两种使用模式：
+// 1. 系统级：无 APIKey 创建，仅用于基础连通性检查
+// 2. 用户级：通过 WithAPIKey() 创建绑定了用户 APIKey 的副本
 type Client struct {
 	config     *Config
 	httpClient *http.Client
 }
 
 // NewClient 创建 RAGFlow 客户端
+// 不再要求 APIKey 必须存在，APIKey 可后续通过 WithAPIKey 动态注入
 func NewClient(cfg *Config) *Client {
 	if cfg.Timeout == 0 {
 		cfg.Timeout = 30 * time.Second
@@ -42,6 +46,23 @@ func NewClient(cfg *Config) *Client {
 			},
 		},
 	}
+}
+
+// WithAPIKey 返回一个绑定了指定 APIKey 的客户端副本
+// 共享底层 httpClient（连接池），仅覆盖 config 中的 APIKey
+// 这是 per-user 认证的核心方法
+func (c *Client) WithAPIKey(apiKey string) *Client {
+	newConfig := *c.config // 浅拷贝 config
+	newConfig.APIKey = apiKey
+	return &Client{
+		config:     &newConfig,
+		httpClient: c.httpClient, // 共享连接池
+	}
+}
+
+// HasAPIKey 检查客户端是否已配置 APIKey
+func (c *Client) HasAPIKey() bool {
+	return c.config.APIKey != ""
 }
 
 // ==================== 基础 HTTP 方法 ====================
@@ -63,13 +84,18 @@ func (c *Client) request(ctx context.Context, method, path string, body any) (*h
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	if c.HasAPIKey() {
+		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	return c.httpClient.Do(req)
 }
 
 // decodeResponse 解码 API 响应
+// 策略：先检查 HTTP 状态码和业务错误码，再解析 data 字段
+// 原因：RAGFlow 错误响应中 data 字段类型不固定（可能是 false/null），
+// 直接用泛型反序列化会导致 json.Unmarshal 失败
 func decodeResponse[T any](resp *http.Response) (*T, error) {
 	defer resp.Body.Close()
 
@@ -82,16 +108,30 @@ func decodeResponse[T any](resp *http.Response) (*T, error) {
 		return nil, fmt.Errorf("API 错误 %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var result APIResponse[T]
-	if err := json.Unmarshal(bodyBytes, &result); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w", err)
+	// 第一步：用 RawMessage 延迟解析 data，先检查 code
+	var envelope struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(bodyBytes, &envelope); err != nil {
+		return nil, fmt.Errorf("解析响应信封失败: %w", err)
 	}
 
-	if result.Code != 0 {
-		return nil, fmt.Errorf("RAGFlow 错误: %s", result.Message)
+	// 第二步：优先检查业务错误码
+	if envelope.Code != 0 {
+		return nil, fmt.Errorf("RAGFlow 错误 (code=%d): %s", envelope.Code, envelope.Message)
 	}
 
-	return &result.Data, nil
+	// 第三步：业务成功，安全解析 data 字段
+	var data T
+	if len(envelope.Data) > 0 && string(envelope.Data) != "null" && string(envelope.Data) != "false" {
+		if err := json.Unmarshal(envelope.Data, &data); err != nil {
+			return nil, fmt.Errorf("解析响应数据失败: %w", err)
+		}
+	}
+
+	return &data, nil
 }
 
 // ==================== 数据集管理 ====================

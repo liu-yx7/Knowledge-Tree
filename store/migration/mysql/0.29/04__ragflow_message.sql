@@ -9,8 +9,7 @@ CREATE TABLE IF NOT EXISTS ragflow_message (
   content TEXT NOT NULL,
   references_json JSON NOT NULL,
   created_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  FOREIGN KEY (conversation_id) REFERENCES ragflow_conversation(id) ON DELETE CASCADE
+  FOREIGN KEY (conversation_id) REFERENCES ragflow_conversation(id) ON DELETE CASCADE,
+  INDEX idx_ragflow_message_conversation_id (conversation_id),
+  INDEX idx_ragflow_message_created_ts (created_ts)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE INDEX idx_ragflow_message_conversation_id ON ragflow_message(conversation_id);
-CREATE INDEX idx_ragflow_message_created_ts ON ragflow_message(created_ts);

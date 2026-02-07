@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS ragflow_user_mapping (
   last_sync_ts BIGINT,
   created_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   updated_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+  INDEX idx_ragflow_user_mapping_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE INDEX idx_ragflow_user_mapping_user_id ON ragflow_user_mapping(user_id);

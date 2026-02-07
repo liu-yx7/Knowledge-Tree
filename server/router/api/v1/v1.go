@@ -164,3 +164,21 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 
 	return nil
 }
+
+// getUserRAGFlowClient 获取绑定了用户 API Key 的 RAGFlow 客户端
+// 从 ragflow_user_mapping 表中查询用户的 API Key，返回 per-user 客户端副本
+// 如果用户没有 API Key，返回 nil（用户尚未完成 RAGFlow Provisioning）
+func (s *APIV1Service) getUserRAGFlowClient(ctx context.Context, userID int32) *ragflow.Client {
+	if s.RAGFlowClient == nil {
+		return nil
+	}
+
+	mapping, err := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &userID,
+	})
+	if err != nil || mapping == nil || mapping.APIKey == "" {
+		return nil
+	}
+
+	return s.RAGFlowClient.WithAPIKey(mapping.APIKey)
+}

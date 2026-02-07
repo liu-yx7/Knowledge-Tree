@@ -205,37 +205,21 @@ func (s *Server) getOrUpsertInstanceBasicSetting(ctx context.Context) (*storepb.
 }
 
 // initRAGFlowClient 初始化 RAGFlow 客户端
-// 替代原有的 initLLMManager 函数
+// 只需要 BaseURL 即可创建客户端，APIKey 通过 per-user Provisioning 动态获取
 func initRAGFlowClient(p *profile.Profile) *ragflow.Client {
-	// 从环境变量读取配置（优先），否则使用 Profile 中的配置
 	baseURL := os.Getenv("MEMOS_RAGFLOW_BASE_URL")
 	if baseURL == "" {
 		baseURL = p.RAGFlowBaseURL
 	}
+
+	// 没有配置 BaseURL，RAGFlow 功能完全禁用
 	if baseURL == "" {
-		baseURL = "http://localhost:9380" // 默认值
-	}
-
-	apiKey := os.Getenv("MEMOS_RAGFLOW_API_KEY")
-	if apiKey == "" {
-		apiKey = p.RAGFlowAPIKey
-	}
-
-	assistantID := os.Getenv("MEMOS_RAGFLOW_ASSISTANT_ID")
-	if assistantID == "" {
-		assistantID = p.RAGFlowAssistantID
-	}
-
-	// 如果没有配置 API Key，返回 nil（AI 功能禁用）
-	if apiKey == "" {
-		slog.Warn("RAGFlow API key not configured, AI features disabled")
+		slog.Info("RAGFlow BaseURL not configured, RAGFlow features disabled")
 		return nil
 	}
 
 	cfg := &ragflow.Config{
-		BaseURL:     baseURL,
-		APIKey:      apiKey,
-		AssistantID: assistantID,
+		BaseURL: baseURL,
 	}
 	cfg.WithDefaults()
 
@@ -245,10 +229,7 @@ func initRAGFlowClient(p *profile.Profile) *ragflow.Client {
 	}
 
 	client := ragflow.NewClient(cfg)
-	slog.Info("RAGFlow client initialized",
-		"baseURL", baseURL,
-		"assistantID", assistantID,
-	)
+	slog.Info("RAGFlow client initialized", "baseURL", baseURL)
 
 	return client
 }
@@ -259,29 +240,14 @@ func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
 	if baseURL == "" {
 		baseURL = p.RAGFlowBaseURL
 	}
+
+	// 没有配置 BaseURL，同步功能禁用
 	if baseURL == "" {
-		baseURL = "http://localhost:9380"
-	}
-
-	apiKey := os.Getenv("MEMOS_RAGFLOW_API_KEY")
-	if apiKey == "" {
-		apiKey = p.RAGFlowAPIKey
-	}
-
-	assistantID := os.Getenv("MEMOS_RAGFLOW_ASSISTANT_ID")
-	if assistantID == "" {
-		assistantID = p.RAGFlowAssistantID
-	}
-
-	// 如果没有配置 API Key，返回 nil（同步功能禁用）
-	if apiKey == "" {
 		return nil
 	}
 
 	cfg := &ragflow.Config{
-		BaseURL:     baseURL,
-		APIKey:      apiKey,
-		AssistantID: assistantID,
+		BaseURL: baseURL,
 	}
 	cfg.WithDefaults()
 

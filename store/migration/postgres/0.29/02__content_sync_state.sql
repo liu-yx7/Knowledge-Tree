@@ -1,8 +1,17 @@
 -- ==================== 内容同步状态表 ====================
 -- 记录每个内容项（Memo/Attachment）的 RAGFlow 同步状态
 
-CREATE TYPE content_type_enum AS ENUM ('memo', 'attachment');
-CREATE TYPE ragflow_status_enum AS ENUM ('pending', 'synced', 'failed', 'skipped');
+DO $$ BEGIN
+  CREATE TYPE content_type_enum AS ENUM ('memo', 'attachment');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE ragflow_status_enum AS ENUM ('pending', 'synced', 'failed', 'skipped');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS content_sync_state (
   id SERIAL PRIMARY KEY,

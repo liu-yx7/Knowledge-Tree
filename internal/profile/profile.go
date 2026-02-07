@@ -35,11 +35,9 @@ type Profile struct {
 
 	// ==================== RAGFlow 配置 ====================
 	// RAGFlowBaseURL RAGFlow 服务地址
+	// 这是唯一的系统级 RAGFlow 配置
+	// APIKey 通过 per-user Provisioning 自动获取，不在此配置
 	RAGFlowBaseURL string
-	// RAGFlowAPIKey RAGFlow API 密钥
-	RAGFlowAPIKey string
-	// RAGFlowAssistantID RAGFlow 助手 ID
-	RAGFlowAssistantID string
 }
 
 func checkDataDir(dataDir string) (string, error) {

@@ -1,5 +1,5 @@
 -- ai_conversation: stores chat conversations
-CREATE TABLE ai_conversation (
+CREATE TABLE IF NOT EXISTS ai_conversation (
   id INT AUTO_INCREMENT PRIMARY KEY,
   uid VARCHAR(256) NOT NULL UNIQUE,
   user_id INT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE ai_conversation (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ai_message: stores individual messages in conversations
-CREATE TABLE ai_message (
+CREATE TABLE IF NOT EXISTS ai_message (
   id INT AUTO_INCREMENT PRIMARY KEY,
   uid VARCHAR(256) NOT NULL UNIQUE,
   conversation_id INT NOT NULL,

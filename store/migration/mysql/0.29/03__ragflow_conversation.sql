@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS ragflow_conversation (
   created_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   updated_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   row_status ENUM('NORMAL', 'ARCHIVED') NOT NULL DEFAULT 'NORMAL',
-  FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+  INDEX idx_ragflow_conversation_user_id (user_id),
+  INDEX idx_ragflow_conversation_session_id (ragflow_session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE INDEX idx_ragflow_conversation_user_id ON ragflow_conversation(user_id);
-CREATE INDEX idx_ragflow_conversation_session_id ON ragflow_conversation(ragflow_session_id);

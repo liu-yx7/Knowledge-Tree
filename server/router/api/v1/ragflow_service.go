@@ -143,9 +143,10 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		slog.Int("userID", int(userID)),
 		slog.String("query", req.Query))
 
-	// 检查 RAGFlow 服务是否已启用
-	if s.RAGFlowClient == nil {
-		slog.Warn("SemanticSearch: RAGFlow client not configured, returning empty results",
+	// 获取 per-user RAGFlow 客户端
+	userClient := s.getUserRAGFlowClient(ctx, userID)
+	if userClient == nil {
+		slog.Warn("SemanticSearch: 用户未完成 RAGFlow Provisioning，返回空结果",
 			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
@@ -198,7 +199,7 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		similarityThreshold = 0.3
 	}
 
-	// 调用 RAGFlow 检索 API
+	// 使用 per-user 客户端调用 RAGFlow 检索 API
 	retrieveReq := &ragflow.RetrievalRequest{
 		DatasetIDs:          []string{datasetID},
 		Question:            req.Query,
@@ -212,7 +213,7 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		slog.Int("topK", topK),
 		slog.Float64("similarityThreshold", float64(similarityThreshold)))
 
-	retrievalResult, err := s.RAGFlowClient.Retrieve(ctx, retrieveReq)
+	retrievalResult, err := userClient.Retrieve(ctx, retrieveReq)
 	if err != nil {
 		slog.Error("SemanticSearch: RAGFlow 检索失败",
 			slog.Int("userID", int(userID)),

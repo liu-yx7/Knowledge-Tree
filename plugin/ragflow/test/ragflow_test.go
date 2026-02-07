@@ -1,4 +1,4 @@
-package ragflow
+package ragflow_test
 
 import (
 	"context"
@@ -7,13 +7,15 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/usememos/memos/plugin/ragflow"
 )
 
 // ==================== 测试辅助函数 ====================
 
-func setupTestServer(handler http.HandlerFunc) (*httptest.Server, *Client) {
+func setupTestServer(handler http.HandlerFunc) (*httptest.Server, *ragflow.Client) {
 	server := httptest.NewServer(handler)
-	client := NewClient(&Config{
+	client := ragflow.NewClient(&ragflow.Config{
 		BaseURL: server.URL,
 		APIKey:  "test-api-key",
 		Timeout: 5 * time.Second,
@@ -36,28 +38,28 @@ func jsonResponse(code int, data any) []byte {
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  *Config
+		config  *ragflow.Config
 		wantErr bool
 	}{
 		{
-			name: "有效配置",
-			config: &Config{
+			name: "有效配置（含 APIKey）",
+			config: &ragflow.Config{
 				BaseURL: "http://localhost:9380",
 				APIKey:  "test-key",
 			},
 			wantErr: false,
 		},
 		{
-			name: "缺少 BaseURL",
-			config: &Config{
-				APIKey: "test-key",
+			name: "有效配置（不含 APIKey，per-user 模式）",
+			config: &ragflow.Config{
+				BaseURL: "http://localhost:9380",
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
-			name: "缺少 APIKey",
-			config: &Config{
-				BaseURL: "http://localhost:9380",
+			name: "缺少 BaseURL",
+			config: &ragflow.Config{
+				APIKey: "test-key",
 			},
 			wantErr: true,
 		},
@@ -74,9 +76,8 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestConfig_WithDefaults(t *testing.T) {
-	cfg := &Config{
+	cfg := &ragflow.Config{
 		BaseURL: "http://localhost:9380",
-		APIKey:  "test-key",
 	}
 
 	cfg.WithDefaults()
@@ -92,34 +93,65 @@ func TestConfig_WithDefaults(t *testing.T) {
 // ==================== Client 测试 ====================
 
 func TestNewClient(t *testing.T) {
-	cfg := &Config{
+	cfg := &ragflow.Config{
 		BaseURL: "http://localhost:9380",
 		APIKey:  "test-key",
 	}
 
-	client := NewClient(cfg)
+	client := ragflow.NewClient(cfg)
 
 	if client == nil {
 		t.Fatal("NewClient 返回 nil")
 	}
-	if client.config != cfg {
-		t.Error("配置未正确设置")
+	if !client.HasAPIKey() {
+		t.Error("期望 HasAPIKey() 为 true")
 	}
-	if client.httpClient == nil {
-		t.Error("HTTP 客户端未初始化")
+}
+
+func TestNewClient_WithoutAPIKey(t *testing.T) {
+	cfg := &ragflow.Config{
+		BaseURL: "http://localhost:9380",
+	}
+
+	client := ragflow.NewClient(cfg)
+
+	if client == nil {
+		t.Fatal("NewClient 返回 nil（无 APIKey 也应能创建）")
+	}
+	if client.HasAPIKey() {
+		t.Error("期望 HasAPIKey() 为 false")
+	}
+}
+
+func TestClient_WithAPIKey(t *testing.T) {
+	cfg := &ragflow.Config{
+		BaseURL: "http://localhost:9380",
+	}
+	client := ragflow.NewClient(cfg)
+
+	if client.HasAPIKey() {
+		t.Fatal("初始客户端不应有 APIKey")
+	}
+
+	userClient := client.WithAPIKey("user-api-key")
+	if !userClient.HasAPIKey() {
+		t.Error("WithAPIKey 返回的客户端应有 APIKey")
+	}
+	// 原始客户端不受影响
+	if client.HasAPIKey() {
+		t.Error("原始客户端不应被修改")
 	}
 }
 
 // ==================== 数据集操作测试 ====================
 
 func TestClient_ListDatasets(t *testing.T) {
-	datasets := []Dataset{
+	datasets := []ragflow.Dataset{
 		{ID: "ds1", Name: "测试数据集1", ChunkMethod: "naive"},
 		{ID: "ds2", Name: "测试数据集2", ChunkMethod: "qa"},
 	}
 
 	server, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
-		// 验证请求
 		if r.Method != http.MethodGet {
 			t.Errorf("期望 GET 方法, 实际 = %s", r.Method)
 		}
@@ -133,7 +165,7 @@ func TestClient_ListDatasets(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.ListDatasets(ctx, &ListOptions{Page: 1, PageSize: 10})
+	result, err := client.ListDatasets(ctx, &ragflow.ListOptions{Page: 1, PageSize: 10})
 
 	if err != nil {
 		t.Fatalf("ListDatasets 失败: %v", err)
@@ -147,7 +179,7 @@ func TestClient_ListDatasets(t *testing.T) {
 }
 
 func TestClient_CreateDataset(t *testing.T) {
-	expectedDataset := &Dataset{
+	expectedDataset := &ragflow.Dataset{
 		ID:          "new-ds",
 		Name:        "新数据集",
 		Description: "测试描述",
@@ -165,10 +197,10 @@ func TestClient_CreateDataset(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.CreateDataset(ctx, &CreateDatasetRequest{
+	result, err := client.CreateDataset(ctx, &ragflow.CreateDatasetRequest{
 		Name:        "新数据集",
 		Description: "测试描述",
-		ChunkMethod: ChunkMethodNaive,
+		ChunkMethod: ragflow.ChunkMethodNaive,
 	})
 
 	if err != nil {
@@ -201,8 +233,8 @@ func TestClient_DeleteDataset(t *testing.T) {
 // ==================== 检索测试 ====================
 
 func TestClient_Retrieve(t *testing.T) {
-	expectedResult := &RetrievalResult{
-		Chunks: []Chunk{
+	expectedResult := &ragflow.RetrievalResult{
+		Chunks: []ragflow.Chunk{
 			{ID: "c1", Content: "测试内容1", Similarity: 0.95},
 			{ID: "c2", Content: "测试内容2", Similarity: 0.85},
 		},
@@ -223,7 +255,7 @@ func TestClient_Retrieve(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.Retrieve(ctx, &RetrievalRequest{
+	result, err := client.Retrieve(ctx, &ragflow.RetrievalRequest{
 		DatasetIDs: []string{"ds1"},
 		Question:   "测试问题",
 		TopK:       5,
@@ -243,7 +275,7 @@ func TestClient_Retrieve(t *testing.T) {
 // ==================== 会话测试 ====================
 
 func TestClient_CreateSession(t *testing.T) {
-	expectedSession := &Session{
+	expectedSession := &ragflow.Session{
 		ID:     "session-1",
 		Name:   "测试会话",
 		ChatID: "chat-1",
@@ -271,9 +303,9 @@ func TestClient_CreateSession(t *testing.T) {
 }
 
 func TestClient_Chat(t *testing.T) {
-	expectedResponse := &ChatResponse{
+	expectedResponse := &ragflow.ChatResponse{
 		Answer: "这是 AI 的回答",
-		References: []Chunk{
+		References: []ragflow.Chunk{
 			{ID: "ref1", Content: "参考内容"},
 		},
 	}
@@ -289,7 +321,7 @@ func TestClient_Chat(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.Chat(ctx, "chat-1", &ChatRequest{
+	result, err := client.Chat(ctx, "chat-1", &ragflow.ChatRequest{
 		SessionID: "session-1",
 		Question:  "你好",
 		Stream:    false,
@@ -308,7 +340,7 @@ func TestClient_Chat(t *testing.T) {
 func TestClient_HealthCheck(t *testing.T) {
 	server, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(jsonResponse(0, []Dataset{}))
+		w.Write(jsonResponse(0, []ragflow.Dataset{}))
 	})
 	defer server.Close()
 
@@ -330,7 +362,7 @@ func TestClient_APIError(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	_, err := client.ListDatasets(ctx, DefaultListOptions())
+	_, err := client.ListDatasets(ctx, ragflow.DefaultListOptions())
 
 	if err == nil {
 		t.Fatal("期望返回错误")
@@ -351,17 +383,51 @@ func TestClient_RAGFlowError(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	_, err := client.ListDatasets(ctx, DefaultListOptions())
+	_, err := client.ListDatasets(ctx, ragflow.DefaultListOptions())
 
 	if err == nil {
 		t.Fatal("期望返回 RAGFlow 错误")
 	}
 }
 
+// TestClient_RAGFlowAuthError 测试 RAGFlow 认证错误时 data 字段为 bool 的情况
+func TestClient_RAGFlowAuthError(t *testing.T) {
+	server, client := setupTestServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// 模拟 RAGFlow 认证失败：data 字段返回 false（bool）
+		w.Write([]byte(`{"code":109,"data":false,"message":"Authentication error: API key is invalid!"}`))
+	})
+	defer server.Close()
+
+	ctx := context.Background()
+	_, err := client.ListDatasets(ctx, ragflow.DefaultListOptions())
+
+	if err == nil {
+		t.Fatal("期望返回认证错误")
+	}
+	// 错误信息应包含业务错误码和消息，而非 json unmarshal 错误
+	if !contains(err.Error(), "code=109") {
+		t.Errorf("错误信息应包含业务错误码，实际: %s", err.Error())
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 // ==================== 类型测试 ====================
 
 func TestNewTextDocument(t *testing.T) {
-	doc := NewTextDocument("test", "内容")
+	doc := ragflow.NewTextDocument("test", "内容")
 
 	if doc.Name != "test.txt" {
 		t.Errorf("文档名不正确: %s", doc.Name)
@@ -375,7 +441,7 @@ func TestNewTextDocument(t *testing.T) {
 }
 
 func TestDefaultRetrievalRequest(t *testing.T) {
-	req := DefaultRetrievalRequest([]string{"ds1"}, "问题")
+	req := ragflow.DefaultRetrievalRequest([]string{"ds1"}, "问题")
 
 	if req.TopK != 6 {
 		t.Errorf("默认 TopK 不正确: %d", req.TopK)
@@ -391,7 +457,7 @@ func TestDefaultRetrievalRequest(t *testing.T) {
 // ==================== 文档操作测试 ====================
 
 func TestClient_GetDocument(t *testing.T) {
-	expectedDoc := &DocumentInfo{
+	expectedDoc := &ragflow.DocumentInfo{
 		ID:         "doc-1",
 		Name:       "test.txt",
 		Size:       1024,
@@ -427,7 +493,7 @@ func TestClient_GetDocument(t *testing.T) {
 }
 
 func TestClient_UpdateDocument(t *testing.T) {
-	expectedDoc := &DocumentInfo{
+	expectedDoc := &ragflow.DocumentInfo{
 		ID:       "doc-1",
 		Name:     "updated.txt",
 		Metadata: map[string]any{"visibility": "PUBLIC"},
@@ -441,7 +507,6 @@ func TestClient_UpdateDocument(t *testing.T) {
 			t.Errorf("路径不正确: %s", r.URL.Path)
 		}
 
-		// 验证请求体
 		var payload map[string]any
 		json.NewDecoder(r.Body).Decode(&payload)
 		if payload["name"] != "updated.txt" {
@@ -454,7 +519,7 @@ func TestClient_UpdateDocument(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.UpdateDocument(ctx, "ds-1", "doc-1", &UpdateDocumentRequest{
+	result, err := client.UpdateDocument(ctx, "ds-1", "doc-1", &ragflow.UpdateDocumentRequest{
 		Name:     "updated.txt",
 		Metadata: map[string]any{"visibility": "PUBLIC"},
 	})
@@ -468,7 +533,7 @@ func TestClient_UpdateDocument(t *testing.T) {
 }
 
 func TestClient_GetDocumentChunks(t *testing.T) {
-	expectedChunks := []Chunk{
+	expectedChunks := []ragflow.Chunk{
 		{ID: "chunk-1", Content: "内容片段1", Similarity: 0.9},
 		{ID: "chunk-2", Content: "内容片段2", Similarity: 0.8},
 	}
@@ -484,7 +549,7 @@ func TestClient_GetDocumentChunks(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.GetDocumentChunks(ctx, "ds-1", "doc-1", &ListOptions{Page: 1, PageSize: 10})
+	result, err := client.GetDocumentChunks(ctx, "ds-1", "doc-1", &ragflow.ListOptions{Page: 1, PageSize: 10})
 
 	if err != nil {
 		t.Fatalf("GetDocumentChunks 失败: %v", err)
@@ -497,7 +562,7 @@ func TestClient_GetDocumentChunks(t *testing.T) {
 // ==================== 聊天助手测试 ====================
 
 func TestClient_CreateChatAssistant(t *testing.T) {
-	expectedAssistant := &ChatAssistant{
+	expectedAssistant := &ragflow.ChatAssistant{
 		ID:         "assistant-1",
 		Name:       "测试助手",
 		DatasetIDs: []string{"ds-1", "ds-2"},

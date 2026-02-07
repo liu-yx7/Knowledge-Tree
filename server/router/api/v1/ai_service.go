@@ -221,8 +221,10 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 	}
 
-	if s.RAGFlowClient == nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled (RAGFlow not configured)")
+	// 获取 per-user RAGFlow 客户端
+	userClient := s.getUserRAGFlowClient(ctx, userID)
+	if userClient == nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled (RAGFlow not provisioned for this user)")
 	}
 
 	// Get conversation
@@ -253,10 +255,17 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.Internal, "failed to save user message: %v", err)
 	}
 
-	// 调用 RAGFlow Chat API
-	assistantID := s.RAGFlowClient.GetConfig().AssistantID
+	// 调用 RAGFlow Chat API（使用 per-user 客户端）
+	assistantID := userClient.GetConfig().AssistantID
 	if assistantID == "" {
-		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured")
+		// 从用户映射中获取 AssistantID
+		mapping, _ := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
+		if mapping != nil {
+			assistantID = mapping.AssistantID
+		}
+	}
+	if assistantID == "" {
+		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured for this user")
 	}
 
 	// 使用会话 UID 作为 RAGFlow session ID（简化映射）
@@ -266,7 +275,7 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		Stream:    false,
 	}
 
-	chatResp, err := s.RAGFlowClient.Chat(ctx, assistantID, chatReq)
+	chatResp, err := userClient.Chat(ctx, assistantID, chatReq)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get AI response from RAGFlow: %v", err)
 	}

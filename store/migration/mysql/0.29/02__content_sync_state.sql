@@ -16,9 +16,8 @@ CREATE TABLE IF NOT EXISTS content_sync_state (
   next_retry_ts BIGINT,
   created_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   updated_ts BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  UNIQUE KEY uk_content_type_uid (content_type, content_uid)
+  UNIQUE KEY uk_content_type_uid (content_type, content_uid),
+  INDEX idx_content_sync_state_owner_id (owner_id),
+  INDEX idx_content_sync_state_status (ragflow_status),
+  INDEX idx_content_sync_state_retry (next_retry_ts)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
-CREATE INDEX idx_content_sync_state_owner_id ON content_sync_state(owner_id);
-CREATE INDEX idx_content_sync_state_status ON content_sync_state(ragflow_status);
-CREATE INDEX idx_content_sync_state_retry ON content_sync_state(next_retry_ts);
