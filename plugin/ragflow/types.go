@@ -48,10 +48,10 @@ type Dataset struct {
 	ChunkMethod   string `json:"chunk_method"`
 	ChunkCount    int    `json:"chunk_count"`
 	DocumentCount int    `json:"document_count"`
-	CreateTime    int64  `json:"create_time"`  // 毫秒级 Unix 时间戳
-	UpdateTime    int64  `json:"update_time"`  // 毫秒级 Unix 时间戳
-	CreateDate    string `json:"create_date"`  // 可读日期格式
-	UpdateDate    string `json:"update_date"`  // 可读日期格式
+	CreateTime    int64  `json:"create_time"` // 毫秒级 Unix 时间戳
+	UpdateTime    int64  `json:"update_time"` // 毫秒级 Unix 时间戳
+	CreateDate    string `json:"create_date"` // 可读日期格式
+	UpdateDate    string `json:"update_date"` // 可读日期格式
 }
 
 // ==================== 文档相关类型 ====================
@@ -79,7 +79,7 @@ type DocumentInfo struct {
 	Name       string         `json:"name"`
 	Size       int64          `json:"size"`
 	ChunkCount int            `json:"chunk_count"`
-	Status     string         `json:"run"`              // RAGFlow 使用 "run" 字段表示状态
+	Status     string         `json:"run"` // RAGFlow 使用 "run" 字段表示状态
 	Metadata   map[string]any `json:"meta_fields,omitempty"`
 	DatasetID  string         `json:"dataset_id"`
 	Location   string         `json:"location"`
