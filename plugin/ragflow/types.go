@@ -183,3 +183,59 @@ type ChatResponse struct {
 	Answer     string  `json:"answer"`
 	References []Chunk `json:"references"`
 }
+
+// ==================== 认证相关类型 ====================
+
+// RegisterRequest 用户注册请求
+type RegisterRequest struct {
+	Email    string // 邮箱，格式: {memosUserID}@knowtree.local
+	Nickname string // 昵称
+	Password string // 明文密码，AuthClient 内部会进行 RSA 加密
+}
+
+// LoginRequest 用户登录请求
+type LoginRequest struct {
+	Email    string // 邮箱
+	Password string // 明文密码，AuthClient 内部会进行 RSA 加密
+}
+
+// AuthResult 认证结果（注册或登录成功后返回）
+type AuthResult struct {
+	UserID    string // RAGFlow 用户 ID（从响应体中提取）
+	AuthToken string // Authorization Token（从响应头中提取，已序列化，可直接使用）
+}
+
+// NewTokenData /v1/system/new_token 响应中的 data 字段
+type NewTokenData struct {
+	Token      string `json:"token"`       // API Key，格式: ragflow-xxxxx
+	TenantID   string `json:"tenant_id"`   // 租户 ID
+	Beta       string `json:"beta"`        // Beta token
+	CreateTime int64  `json:"create_time"` // 创建时间戳
+}
+
+// ==================== 认证错误定义 ====================
+
+// AuthError 认证错误，携带 RAGFlow 返回的错误信息
+type AuthError struct {
+	Code    int    // RAGFlow 错误码
+	Message string // RAGFlow 错误信息
+	Kind    AuthErrorKind
+}
+
+func (e *AuthError) Error() string {
+	return e.Message
+}
+
+// AuthErrorKind 认证错误类型枚举
+type AuthErrorKind int
+
+const (
+	AuthErrorUnknown              AuthErrorKind = iota
+	AuthErrorUserExists                         // 用户已注册
+	AuthErrorInvalidEmail                       // 邮箱格式无效
+	AuthErrorInvalidCredentials                 // 邮箱和密码不匹配
+	AuthErrorRegistrationDisabled               // 注册功能已禁用
+	AuthErrorUserNotFound                       // 用户不存在
+	AuthErrorUserInactive                       // 用户已停用
+	AuthErrorDecryptFailed                      // 密码解密失败
+)
