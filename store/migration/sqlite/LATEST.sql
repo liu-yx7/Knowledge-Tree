@@ -161,6 +161,10 @@ CREATE TABLE ragflow_user_mapping (
   assistant_id TEXT NOT NULL DEFAULT '',
   document_count INTEGER NOT NULL DEFAULT 0,
   last_sync_ts BIGINT,
+  ragflow_user_id TEXT NOT NULL DEFAULT '',
+  ragflow_email TEXT NOT NULL DEFAULT '',
+  ragflow_password TEXT NOT NULL DEFAULT '',
+  api_key TEXT NOT NULL DEFAULT '',
   created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE

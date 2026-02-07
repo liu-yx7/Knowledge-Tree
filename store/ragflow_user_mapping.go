@@ -4,15 +4,19 @@ import "context"
 
 // RAGFlowUserMapping represents the mapping between a user and their RAGFlow dataset/assistant.
 type RAGFlowUserMapping struct {
-	ID            int32
-	UserID        int32
-	DatasetID     string
-	DatasetName   string
-	AssistantID   string
-	DocumentCount int32
-	LastSyncTs    *int64
-	CreatedTs     int64
-	UpdatedTs     int64
+	ID              int32
+	UserID          int32
+	DatasetID       string
+	DatasetName     string
+	AssistantID     string
+	DocumentCount   int32
+	LastSyncTs      *int64
+	RAGFlowUserID   string
+	RAGFlowEmail    string
+	RAGFlowPassword string
+	APIKey          string
+	CreatedTs       int64
+	UpdatedTs       int64
 }
 
 // FindRAGFlowUserMapping specifies filter criteria for finding user mappings.
@@ -24,13 +28,17 @@ type FindRAGFlowUserMapping struct {
 
 // UpdateRAGFlowUserMapping specifies fields to update.
 type UpdateRAGFlowUserMapping struct {
-	ID            int32
-	DatasetID     *string
-	DatasetName   *string
-	AssistantID   *string
-	DocumentCount *int32
-	LastSyncTs    *int64
-	UpdatedTs     *int64
+	ID              int32
+	DatasetID       *string
+	DatasetName     *string
+	AssistantID     *string
+	DocumentCount   *int32
+	LastSyncTs      *int64
+	RAGFlowUserID   *string
+	RAGFlowEmail    *string
+	RAGFlowPassword *string
+	APIKey          *string
+	UpdatedTs       *int64
 }
 
 // DeleteRAGFlowUserMapping specifies which mapping to delete.

@@ -9,9 +9,9 @@ import (
 )
 
 func (d *DB) CreateRAGFlowUserMapping(ctx context.Context, create *store.RAGFlowUserMapping) (*store.RAGFlowUserMapping, error) {
-	fields := []string{"user_id", "dataset_id", "dataset_name", "assistant_id", "document_count"}
-	placeholder := []string{"$1", "$2", "$3", "$4", "$5"}
-	args := []any{create.UserID, create.DatasetID, create.DatasetName, create.AssistantID, create.DocumentCount}
+	fields := []string{"user_id", "dataset_id", "dataset_name", "assistant_id", "document_count", "ragflow_user_id", "ragflow_email", "ragflow_password", "api_key"}
+	placeholder := []string{"$1", "$2", "$3", "$4", "$5", "$6", "$7", "$8", "$9"}
+	args := []any{create.UserID, create.DatasetID, create.DatasetName, create.AssistantID, create.DocumentCount, create.RAGFlowUserID, create.RAGFlowEmail, create.RAGFlowPassword, create.APIKey}
 
 	if create.LastSyncTs != nil {
 		fields = append(fields, "last_sync_ts")
@@ -43,7 +43,7 @@ func (d *DB) ListRAGFlowUserMappings(ctx context.Context, find *store.FindRAGFlo
 		where, args = append(where, fmt.Sprintf("dataset_id = $%d", len(args)+1)), append(args, *find.DatasetID)
 	}
 
-	query := "SELECT id, user_id, dataset_id, dataset_name, assistant_id, document_count, last_sync_ts, created_ts, updated_ts FROM ragflow_user_mapping WHERE " + strings.Join(where, " AND ")
+	query := "SELECT id, user_id, dataset_id, dataset_name, assistant_id, document_count, last_sync_ts, ragflow_user_id, ragflow_email, ragflow_password, api_key, created_ts, updated_ts FROM ragflow_user_mapping WHERE " + strings.Join(where, " AND ")
 
 	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -62,6 +62,10 @@ func (d *DB) ListRAGFlowUserMappings(ctx context.Context, find *store.FindRAGFlo
 			&mapping.AssistantID,
 			&mapping.DocumentCount,
 			&mapping.LastSyncTs,
+			&mapping.RAGFlowUserID,
+			&mapping.RAGFlowEmail,
+			&mapping.RAGFlowPassword,
+			&mapping.APIKey,
 			&mapping.CreatedTs,
 			&mapping.UpdatedTs,
 		); err != nil {
@@ -93,6 +97,18 @@ func (d *DB) UpdateRAGFlowUserMapping(ctx context.Context, update *store.UpdateR
 	}
 	if update.LastSyncTs != nil {
 		set, args = append(set, fmt.Sprintf("last_sync_ts = $%d", len(args)+1)), append(args, *update.LastSyncTs)
+	}
+	if update.RAGFlowUserID != nil {
+		set, args = append(set, fmt.Sprintf("ragflow_user_id = $%d", len(args)+1)), append(args, *update.RAGFlowUserID)
+	}
+	if update.RAGFlowEmail != nil {
+		set, args = append(set, fmt.Sprintf("ragflow_email = $%d", len(args)+1)), append(args, *update.RAGFlowEmail)
+	}
+	if update.RAGFlowPassword != nil {
+		set, args = append(set, fmt.Sprintf("ragflow_password = $%d", len(args)+1)), append(args, *update.RAGFlowPassword)
+	}
+	if update.APIKey != nil {
+		set, args = append(set, fmt.Sprintf("api_key = $%d", len(args)+1)), append(args, *update.APIKey)
 	}
 	if update.UpdatedTs != nil {
 		set, args = append(set, fmt.Sprintf("updated_ts = $%d", len(args)+1)), append(args, *update.UpdatedTs)
