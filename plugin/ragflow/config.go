@@ -2,6 +2,7 @@ package ragflow
 
 import (
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -23,6 +24,10 @@ type Config struct {
 
 	// MaxRetries 最大重试次数
 	MaxRetries int
+
+	// PublicKeyPath RSA 公钥文件路径（用于密码加密）
+	// 加载优先级：PublicKeyPath > 环境变量 RAGFLOW_PUBLIC_KEY_PATH > 默认路径
+	PublicKeyPath string
 }
 
 // Validate 验证配置有效性
@@ -36,6 +41,15 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ValidateForProvisioning 验证用于用户自动配置的配置有效性
+// 此验证不要求 APIKey，因为 Provisioner 会自动生成用户级 API Key
+func (c *Config) ValidateForProvisioning() error {
+	if c.BaseURL == "" {
+		return fmt.Errorf("RAGFlow BaseURL 不能为空")
+	}
+	return nil
+}
+
 // WithDefaults 填充默认值
 func (c *Config) WithDefaults() *Config {
 	if c.Timeout == 0 {
@@ -45,6 +59,49 @@ func (c *Config) WithDefaults() *Config {
 		c.MaxRetries = 3
 	}
 	return c
+}
+
+// ==================== 公钥加载 ====================
+
+// 默认公钥文件路径
+const defaultPublicKeyPath = "./conf/ragflow_public.pem"
+
+// LoadPublicKey 加载 RSA 公钥
+// 加载优先级：
+// 1. 环境变量 RAGFLOW_PUBLIC_KEY（直接包含 PEM 内容）
+// 2. Config.PublicKeyPath（文件路径）
+// 3. 环境变量 RAGFLOW_PUBLIC_KEY_PATH（文件路径）
+// 4. 默认路径 ./conf/ragflow_public.pem
+func (c *Config) LoadPublicKey() ([]byte, error) {
+	// 优先级 1: 环境变量直接包含公钥内容
+	if envKey := os.Getenv("RAGFLOW_PUBLIC_KEY"); envKey != "" {
+		return []byte(envKey), nil
+	}
+
+	// 优先级 2: Config.PublicKeyPath
+	if c.PublicKeyPath != "" {
+		return loadPublicKeyFromFile(c.PublicKeyPath)
+	}
+
+	// 优先级 3: 环境变量指定文件路径
+	if envPath := os.Getenv("RAGFLOW_PUBLIC_KEY_PATH"); envPath != "" {
+		return loadPublicKeyFromFile(envPath)
+	}
+
+	// 优先级 4: 默认路径
+	return loadPublicKeyFromFile(defaultPublicKeyPath)
+}
+
+// loadPublicKeyFromFile 从文件加载公钥
+func loadPublicKeyFromFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("公钥文件不存在: %s", path)
+		}
+		return nil, fmt.Errorf("读取公钥文件失败 (%s): %w", path, err)
+	}
+	return data, nil
 }
 
 // ==================== 分块方法枚举 ====================
