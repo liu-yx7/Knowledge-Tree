@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -37,6 +38,9 @@ type APIV1Service struct {
 	MarkdownService markdown.Service
 	RAGFlowClient   *ragflow.Client // 替代原有的 LLMManager
 
+	// RAGFlow Provisioner - 用户无感知的 RAGFlow 账户自动配置
+	RAGFlowProvisioner *ragflow.Provisioner
+
 	// RAGFlow 同步 Runner - 用于触发同步事件
 	RAGFlowSyncRunner *ragflowsync.Runner
 
@@ -44,7 +48,7 @@ type APIV1Service struct {
 	thumbnailSemaphore *semaphore.Weighted
 }
 
-func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowSyncRunner *ragflowsync.Runner) *APIV1Service {
+func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowProvisioner *ragflow.Provisioner, ragflowSyncRunner *ragflowsync.Runner) *APIV1Service {
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
@@ -54,6 +58,7 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 		Store:              store,
 		MarkdownService:    markdownService,
 		RAGFlowClient:      ragflowClient,
+		RAGFlowProvisioner: ragflowProvisioner,
 		RAGFlowSyncRunner:  ragflowSyncRunner,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
@@ -166,9 +171,31 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 }
 
 // getUserRAGFlowClient 获取绑定了用户 API Key 的 RAGFlow 客户端
-// 从 ragflow_user_mapping 表中查询用户的 API Key，返回 per-user 客户端副本
-// 如果用户没有 API Key，返回 nil（用户尚未完成 RAGFlow Provisioning）
+// 优先通过 Provisioner 自动配置（注册/登录/生成 API Key），实现用户无感知接入
+// 如果 Provisioner 未配置，降级到被动查询 ragflow_user_mapping 表
 func (s *APIV1Service) getUserRAGFlowClient(ctx context.Context, userID int32) *ragflow.Client {
+	// 优先路径：通过 Provisioner 自动配置（P2 核心能力）
+	if s.RAGFlowProvisioner != nil {
+		// 获取用户信息（Provisioner 需要 username 生成 RAGFlow 邮箱）
+		user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
+		if err != nil || user == nil {
+			slog.Warn("getUserRAGFlowClient: 获取用户信息失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			return nil
+		}
+
+		client, err := s.RAGFlowProvisioner.GetClientForUser(ctx, userID, user.Username)
+		if err != nil {
+			slog.Warn("getUserRAGFlowClient: Provisioner 自动配置失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			return nil
+		}
+		return client
+	}
+
+	// 降级路径：被动查询映射表（Provisioner 未配置时的兼容模式）
 	if s.RAGFlowClient == nil {
 		return nil
 	}

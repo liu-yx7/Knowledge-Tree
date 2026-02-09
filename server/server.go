@@ -75,10 +75,18 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	ragflowClient := initRAGFlowClient(profile)
 	ragflowConfig := initRAGFlowConfig(profile)
 
+	// Initialize RAGFlow Provisioner（用户无感知的 RAGFlow 账户自动配置）
+	ragflowProvisioner := initRAGFlowProvisioner(ragflowConfig, store)
+
 	// Initialize RAGFlow Sync Runner
 	s.ragflowSyncRunner = ragflowsync.NewRunner(store, ragflowConfig)
 
-	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, s.ragflowSyncRunner)
+	// 将 Provisioner 注入 Runner，使同步操作使用 per-user Client
+	if ragflowProvisioner != nil {
+		s.ragflowSyncRunner.SetProvisioner(ragflowProvisioner)
+	}
+
+	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, ragflowProvisioner, s.ragflowSyncRunner)
 
 	// Register HTTP file server routes BEFORE gRPC-Gateway to ensure proper range request handling for Safari.
 	// This uses native HTTP serving (http.ServeContent) instead of gRPC for video/audio files.
@@ -257,4 +265,20 @@ func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
 	}
 
 	return cfg
+}
+
+// initRAGFlowProvisioner 初始化 RAGFlow Provisioner
+func initRAGFlowProvisioner(cfg *ragflow.Config, s *store.Store) *ragflow.Provisioner {
+	if cfg == nil {
+		return nil
+	}
+
+	provisioner, err := ragflow.NewProvisioner(cfg, s)
+	if err != nil {
+		slog.Error("RAGFlow provisioner initialization failed", "error", err)
+		return nil
+	}
+
+	slog.Info("RAGFlow provisioner initialized")
+	return provisioner
 }

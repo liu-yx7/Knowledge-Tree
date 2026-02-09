@@ -29,6 +29,11 @@ func NewVisibilityHandler(s *store.Store, client *ragflow.Client, tracker *State
 	}
 }
 
+// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
+func (h *VisibilityHandler) SetClient(client *ragflow.Client) {
+	h.ragflowClient = client
+}
+
 // ==================== 核心方法 ====================
 
 // HandleVisibilityChange 处理 visibility 变更

@@ -143,44 +143,54 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		slog.Int("userID", int(userID)),
 		slog.String("query", req.Query))
 
-	// 获取 per-user RAGFlow 客户端
-	userClient := s.getUserRAGFlowClient(ctx, userID)
-	if userClient == nil {
-		slog.Warn("SemanticSearch: 用户未完成 RAGFlow Provisioning，返回空结果",
-			slog.Int("userID", int(userID)))
-		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
-	}
-
 	if req.Query == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "query is required")
 	}
 
-	// 检查 RAGFlow Sync Runner 是否已启用
-	if s.RAGFlowSyncRunner == nil {
-		slog.Warn("SemanticSearch: RAGFlow sync runner not configured, returning empty results",
-			slog.Int("userID", int(userID)))
-		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
-	}
-
-	orchestrator := s.RAGFlowSyncRunner.GetOrchestrator()
-	if orchestrator == nil {
-		slog.Warn("SemanticSearch: RAGFlow orchestrator not available, returning empty results",
-			slog.Int("userID", int(userID)))
-		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
-	}
-
-	// 获取用户的 Dataset ID
-	datasetID, err := orchestrator.GetUserDatasetID(ctx, userID)
-	if err != nil {
-		// 用户可能还没有任何内容同步，返回空结果
-		slog.Warn("SemanticSearch: 用户没有 RAGFlow Dataset，返回空结果",
+	// 获取用户信息（Provisioner 需要 username）
+	user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
+	if err != nil || user == nil {
+		slog.Warn("SemanticSearch: 获取用户信息失败",
 			slog.Int("userID", int(userID)),
 			slog.Any("error", err))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
+	// 通过 Provisioner 获取 per-user Client 和 DatasetID（自动创建缺失资源）
+	var userClient *ragflow.Client
+	var datasetID string
+
+	if s.RAGFlowProvisioner != nil {
+		userClient, datasetID, err = s.RAGFlowProvisioner.EnsureUserResources(ctx, userID, user.Username)
+		if err != nil {
+			slog.Warn("SemanticSearch: Provisioner 资源配置失败，返回空结果",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
+		}
+	} else {
+		// 降级：通过 Orchestrator 获取 DatasetID
+		userClient = s.getUserRAGFlowClient(ctx, userID)
+		if userClient == nil {
+			slog.Warn("SemanticSearch: 用户未完成 RAGFlow Provisioning，返回空结果",
+				slog.Int("userID", int(userID)))
+			return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
+		}
+
+		if s.RAGFlowSyncRunner != nil {
+			if orchestrator := s.RAGFlowSyncRunner.GetOrchestrator(); orchestrator != nil {
+				datasetID, err = orchestrator.GetUserDatasetID(ctx, userID)
+				if err != nil {
+					slog.Warn("SemanticSearch: 获取 DatasetID 失败",
+						slog.Int("userID", int(userID)),
+						slog.Any("error", err))
+				}
+			}
+		}
+	}
+
 	if datasetID == "" {
-		slog.Warn("SemanticSearch: 用户的 Dataset ID 为空",
+		slog.Warn("SemanticSearch: 用户的 Dataset ID 为空，返回空结果",
 			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}

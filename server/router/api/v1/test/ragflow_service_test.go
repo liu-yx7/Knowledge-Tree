@@ -225,15 +225,15 @@ func TestSemanticSearch_FailedPrecondition_NilClient(t *testing.T) {
 	userCtx := ts.CreateUserContext(ctx, user.ID)
 
 	ts.Service.RAGFlowClient = nil
+	ts.Service.RAGFlowProvisioner = nil
 
-	_, err = ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
+	// RAGFlow 未配置时，SemanticSearch 降级返回空结果而非错误
+	resp, err := ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
 		Query: "test query",
 	})
-	require.Error(t, err)
-
-	st, ok := status.FromError(err)
-	require.True(t, ok)
-	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp.Results, "RAGFlow 未配置时应返回空结果")
 }
 
 func TestSemanticSearch_InvalidArgument_EmptyQuery(t *testing.T) {
@@ -247,19 +247,16 @@ func TestSemanticSearch_InvalidArgument_EmptyQuery(t *testing.T) {
 
 	userCtx := ts.CreateUserContext(ctx, user.ID)
 
-	// 设置一个非 nil 的 RAGFlowClient（实际测试中会失败，但这里测试参数验证）
-	// 需要先检查 query 参数
-	ts.Service.RAGFlowClient = nil // 先设为 nil
+	ts.Service.RAGFlowClient = nil
+	ts.Service.RAGFlowProvisioner = nil
 
-	_, err = ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
+	// RAGFlow 未配置时，即使 query 为空也是先返回空结果（RAGFlow 未配置优先级更高）
+	resp, err := ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
 		Query: "",
 	})
-	require.Error(t, err)
-
-	st, ok := status.FromError(err)
-	require.True(t, ok)
-	// 因为 RAGFlowClient 为 nil，会先返回 FailedPrecondition
-	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp.Results, "RAGFlow 未配置时应返回空结果")
 }
 
 // ==================== ListContentSyncStates 测试 ====================

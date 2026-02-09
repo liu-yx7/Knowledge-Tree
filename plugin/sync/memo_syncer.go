@@ -30,6 +30,11 @@ func NewMemoSyncer(s *store.Store, client *ragflow.Client, tracker *StateTracker
 	}
 }
 
+// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
+func (s *MemoSyncer) SetClient(client *ragflow.Client) {
+	s.ragflowClient = client
+}
+
 // ==================== 同步方法 ====================
 
 // SyncMemo 同步单个 Memo 到 RAGFlow

@@ -56,6 +56,15 @@ func NewRunner(s *store.Store, config *ragflow.Config) *Runner {
 	}
 }
 
+// SetProvisioner 注入 Provisioner 到 Orchestrator
+// 在 server.go 中初始化完 Provisioner 后调用此方法
+func (r *Runner) SetProvisioner(p pluginsync.ResourceProvisioner) {
+	if r == nil || r.orchestrator == nil {
+		return
+	}
+	r.orchestrator.SetProvisioner(p)
+}
+
 // ==================== 生命周期管理 ====================
 
 // Run 启动运行器主循环

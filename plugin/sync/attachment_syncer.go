@@ -30,6 +30,11 @@ func NewAttachmentSyncer(s *store.Store, client *ragflow.Client, tracker *StateT
 	}
 }
 
+// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
+func (s *AttachmentSyncer) SetClient(client *ragflow.Client) {
+	s.ragflowClient = client
+}
+
 // ==================== 可解析附件类型判断 ====================
 
 // parseableMimeTypes 可被 RAGFlow 解析的 MIME 类型

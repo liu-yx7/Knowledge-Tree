@@ -14,8 +14,12 @@ import (
 // ==================== Provisioner 定义 ====================
 
 // Provisioner RAGFlow 用户自动配置器
-// 职责：协调 AuthClient（注册/登录/API Key 生成）和 Store（持久化映射），
-// 为 Memos 用户透明地配置 RAGFlow 账户，实现"用户无感知"的 RAG 功能接入。
+// 职责：为 Memos 用户透明地配置 RAGFlow 的全部资源：
+//  1. 认证配置：注册/登录/生成 API Key
+//  2. 资源配置：创建 Dataset、Chat Assistant
+//
+// 这是用户 RAGFlow 资源的唯一编排入口，Orchestrator 和 Service 层
+// 都通过 Provisioner 获取 per-user Client 和资源 ID。
 //
 // 使用方式：
 //
@@ -119,6 +123,50 @@ func (p *Provisioner) GetClientForUser(ctx context.Context, memosUserID int32, u
 	return client, nil
 }
 
+// EnsureUserResources 确保用户的全部 RAGFlow 资源就绪（认证 + Dataset + Assistant）
+// 返回 per-user Client 和 DatasetID
+// 这是面向 Orchestrator 的入口，同步事件处理时调用此方法
+func (p *Provisioner) EnsureUserResources(ctx context.Context, memosUserID int32, username string) (*Client, string, error) {
+	// 1. 确保认证配置（API Key）
+	client, err := p.GetClientForUser(ctx, memosUserID, username)
+	if err != nil {
+		return nil, "", fmt.Errorf("确保用户认证配置失败: %w", err)
+	}
+
+	// 2. 确保 Dataset 存在
+	datasetID, err := p.ensureDataset(ctx, client, memosUserID)
+	if err != nil {
+		return nil, "", fmt.Errorf("确保用户 Dataset 失败: %w", err)
+	}
+
+	return client, datasetID, nil
+}
+
+// GetUserDatasetID 获取用户的 Dataset ID，不存在则自动创建
+// 这是面向 SemanticSearch 等查询场景的入口
+func (p *Provisioner) GetUserDatasetID(ctx context.Context, memosUserID int32, username string) (string, error) {
+	// 先查映射表，快速路径
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("查询用户映射失败: %w", err)
+	}
+
+	// 如果 DatasetID 已存在，直接返回
+	if mapping != nil && mapping.DatasetID != "" {
+		return mapping.DatasetID, nil
+	}
+
+	// DatasetID 不存在，触发完整资源配置
+	_, datasetID, err := p.EnsureUserResources(ctx, memosUserID, username)
+	if err != nil {
+		return "", err
+	}
+
+	return datasetID, nil
+}
+
 // InvalidateCache 清除指定用户的缓存（用于 API Key 失效后重新配置）
 func (p *Provisioner) InvalidateCache(memosUserID int32) {
 	p.mu.Lock()
@@ -126,7 +174,105 @@ func (p *Provisioner) InvalidateCache(memosUserID int32) {
 	p.mu.Unlock()
 }
 
-// ==================== 内部配置流程 ====================
+// ==================== 资源配置：Dataset 和 Assistant ====================
+
+// ensureDataset 确保用户有对应的 RAGFlow Dataset
+// 如果映射中已有 DatasetID，直接返回；否则创建新 Dataset
+func (p *Provisioner) ensureDataset(ctx context.Context, client *Client, memosUserID int32) (string, error) {
+	// 查询当前映射
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil {
+		return "", fmt.Errorf("用户映射不存在，需先完成认证配置")
+	}
+
+	// 已有 DatasetID，直接返回
+	if mapping.DatasetID != "" {
+		return mapping.DatasetID, nil
+	}
+
+	// 使用 per-user Client 创建 Dataset
+	datasetName := fmt.Sprintf("knowtree_user_%d", memosUserID)
+	dataset, err := client.CreateDataset(ctx, &CreateDatasetRequest{
+		Name:        datasetName,
+		Description: fmt.Sprintf("Knowtree 用户 %d 的知识库", memosUserID),
+		ChunkMethod: ChunkMethodNaive,
+	})
+	if err != nil {
+		return "", fmt.Errorf("创建 RAGFlow Dataset 失败: %w", err)
+	}
+
+	slog.Info("为用户创建了新的 RAGFlow Dataset",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("datasetID", dataset.ID),
+		slog.String("datasetName", datasetName))
+
+	// 更新映射
+	now := time.Now().Unix()
+	if err := p.store.UpdateRAGFlowUserMapping(ctx, &store.UpdateRAGFlowUserMapping{
+		ID:          mapping.ID,
+		DatasetID:   &dataset.ID,
+		DatasetName: &datasetName,
+		UpdatedTs:   &now,
+	}); err != nil {
+		// Dataset 已创建但映射更新失败，记录警告但返回 DatasetID
+		slog.Error("更新用户映射的 DatasetID 失败",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		return dataset.ID, nil
+	}
+
+	// 创建 Dataset 后，同时创建 Chat Assistant
+	p.ensureAssistant(ctx, client, memosUserID, mapping.ID, dataset.ID)
+
+	return dataset.ID, nil
+}
+
+// ensureAssistant 确保用户有对应的 Chat Assistant（最佳努力，失败不阻塞）
+func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memosUserID int32, mappingID int32, datasetID string) {
+	// 查询当前映射确认是否已有 AssistantID
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		slog.Warn("查询用户映射失败（ensureAssistant）", slog.Any("error", err))
+		return
+	}
+	if mapping != nil && mapping.AssistantID != "" {
+		return // 已有 Assistant
+	}
+
+	assistantName := fmt.Sprintf("knowtree_assistant_%d", memosUserID)
+	assistant, err := client.CreateChatAssistant(ctx, assistantName, []string{datasetID})
+	if err != nil {
+		slog.Warn("创建 Chat Assistant 失败（非阻塞）",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		return
+	}
+
+	slog.Info("为用户创建了 Chat Assistant",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("assistantID", assistant.ID))
+
+	// 更新映射
+	now := time.Now().Unix()
+	if err := p.store.UpdateRAGFlowUserMapping(ctx, &store.UpdateRAGFlowUserMapping{
+		ID:          mappingID,
+		AssistantID: &assistant.ID,
+		UpdatedTs:   &now,
+	}); err != nil {
+		slog.Error("更新用户映射的 AssistantID 失败",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+	}
+}
+
+// ==================== 认证配置流程 ====================
 
 // provisionUser 为 Memos 用户配置 RAGFlow 账户
 // 流程：
