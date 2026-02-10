@@ -652,7 +652,7 @@ func TestClassifyAuthError(t *testing.T) {
 		{"用户未注册", "Email: test@x.com is not registered!", ragflow.AuthErrorUserNotFound},
 		{"账户停用", "This account has been inactive", ragflow.AuthErrorUserInactive},
 		{"解密失败", "Fail to crypt password", ragflow.AuthErrorDecryptFailed},
-			{"未知错误", "Some unknown error occurred", ragflow.AuthErrorUnknown},
+		{"未知错误", "Some unknown error occurred", ragflow.AuthErrorUnknown},
 	}
 
 	for _, tt := range tests {

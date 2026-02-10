@@ -295,7 +295,7 @@ func NewAuthClientForTesting(baseURL string, publicKeyPEM []byte) (*AuthClient, 
 	}
 
 	return &AuthClient{
-		config: &Config{BaseURL: baseURL},
+		config:    &Config{BaseURL: baseURL},
 		encryptor: enc,
 		http: &http.Client{
 			Timeout: defaultTimeout,

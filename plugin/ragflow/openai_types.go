@@ -17,7 +17,7 @@ type OpenAIChatCompletionRequest struct {
 // OpenAIMessage OpenAI 格式的消息
 // RAGFlow 会过滤掉 role=system 和开头的 role=assistant
 type OpenAIMessage struct {
-	Role    string `json:"role"`    // "system" | "user" | "assistant"
+	Role    string `json:"role"` // "system" | "user" | "assistant"
 	Content string `json:"content"`
 }
 
@@ -31,7 +31,7 @@ type OpenAIExtraBody struct {
 
 // MetadataCondition 元数据过滤条件
 type MetadataCondition struct {
-	Logic      string              `json:"logic"`      // "and" | "or"
+	Logic      string               `json:"logic"` // "and" | "or"
 	Conditions []MetadataFilterItem `json:"conditions"`
 }
 
@@ -66,9 +66,9 @@ type OpenAIChoice struct {
 
 // OpenAIResponseMessage 非流式响应消息体
 type OpenAIResponseMessage struct {
-	Role      string             `json:"role"`
-	Content   string             `json:"content"`
-	Reference []OpenAIReference  `json:"reference,omitempty"`
+	Role      string            `json:"role"`
+	Content   string            `json:"content"`
+	Reference []OpenAIReference `json:"reference,omitempty"`
 }
 
 // ==================== OpenAI 兼容响应（流式） ====================

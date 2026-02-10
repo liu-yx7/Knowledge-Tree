@@ -73,8 +73,8 @@ func ParseReferences(refs []OpenAIReference) []ParsedReference {
 // parseOneReference 解析单条引用
 func parseOneReference(ref OpenAIReference) ParsedReference {
 	result := ParsedReference{
-		Similarity:   ref.Similarity,
-		DocumentName: ref.DocumentName,
+		Similarity:     ref.Similarity,
+		DocumentName:   ref.DocumentName,
 		ContentSnippet: truncateSnippet(ref.Content, maxSnippetLen),
 	}
 
@@ -111,7 +111,8 @@ func parseOneReference(ref OpenAIReference) ParsedReference {
 // 规则: 去掉 "attachment_" 前缀后，取第一个 "_" 之前的部分作为 UID
 //
 // 示例:
-//   "attachment_att_xyz789_report.pdf" → "att_xyz789"
+//
+//	"attachment_att_xyz789_report.pdf" → "att_xyz789"
 //
 // 注意: UID 本身可能含下划线（如 "att_xyz789"），
 // 因此需要匹配 "att_" 前缀来确定 UID 的边界
