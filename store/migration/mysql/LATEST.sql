@@ -107,6 +107,7 @@ CREATE TABLE `reaction` (
 );
 
 -- ai_conversation: stores AI chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE `ai_conversation` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `uid` VARCHAR(256) NOT NULL UNIQUE,
@@ -115,21 +116,22 @@ CREATE TABLE `ai_conversation` (
   `created_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `row_status` VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
-  `model` VARCHAR(128) NOT NULL DEFAULT '',
-  `provider` VARCHAR(64) NOT NULL DEFAULT '',
   INDEX `idx_ai_conversation_user_id` (`user_id`),
   INDEX `idx_ai_conversation_created_ts` (`created_ts`)
 );
 
 -- ai_message: stores individual messages in AI conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE `ai_message` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `uid` VARCHAR(256) NOT NULL UNIQUE,
   `conversation_id` INT NOT NULL,
   `role` VARCHAR(16) NOT NULL,
   `content` TEXT NOT NULL,
+  `reasoning_content` TEXT NOT NULL,
+  `references_json` TEXT NOT NULL,
+  `token_usage_json` TEXT NOT NULL,
   `created_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `token_count` INT NOT NULL DEFAULT 0,
   INDEX `idx_ai_message_conversation_id` (`conversation_id`),
   INDEX `idx_ai_message_created_ts` (`created_ts`),
   FOREIGN KEY (`conversation_id`) REFERENCES `ai_conversation`(`id`) ON DELETE CASCADE
@@ -190,37 +192,4 @@ CREATE TABLE `content_sync_state` (
   UNIQUE(`content_type`, `content_uid`),
   INDEX `idx_content_sync_state_owner_id` (`owner_id`),
   INDEX `idx_content_sync_state_status` (`ragflow_status`)
-);
-
--- ==================== RAGFlow 对话表 ====================
--- 存储用户与 RAGFlow Chat Assistant 的对话
-
-CREATE TABLE `ragflow_conversation` (
-  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `uid` VARCHAR(255) NOT NULL UNIQUE,
-  `user_id` INT NOT NULL,
-  `ragflow_session_id` VARCHAR(255) NOT NULL,
-  `title` VARCHAR(255) NOT NULL DEFAULT '',
-  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  `row_status` VARCHAR(10) NOT NULL DEFAULT 'NORMAL',
-  FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
-  INDEX `idx_ragflow_conversation_user_id` (`user_id`),
-  INDEX `idx_ragflow_conversation_session_id` (`ragflow_session_id`)
-);
-
--- ==================== RAGFlow 消息表 ====================
--- 存储对话中的消息
-
-CREATE TABLE `ragflow_message` (
-  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `uid` VARCHAR(255) NOT NULL UNIQUE,
-  `conversation_id` INT NOT NULL,
-  `role` VARCHAR(10) NOT NULL,
-  `content` TEXT NOT NULL,
-  `references_json` JSON NOT NULL,
-  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
-  FOREIGN KEY (`conversation_id`) REFERENCES `ragflow_conversation`(`id`) ON DELETE CASCADE,
-  INDEX `idx_ragflow_message_conversation_id` (`conversation_id`),
-  INDEX `idx_ragflow_message_created_ts` (`created_ts`)
 );

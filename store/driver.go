@@ -98,15 +98,4 @@ type Driver interface {
 	UpdateContentSyncState(ctx context.Context, update *UpdateContentSyncState) error
 	DeleteContentSyncState(ctx context.Context, delete *DeleteContentSyncState) error
 	UpsertContentSyncState(ctx context.Context, create *ContentSyncState) (*ContentSyncState, error)
-
-	// RAGFlowConversation model related methods.
-	CreateRAGFlowConversation(ctx context.Context, create *RAGFlowConversation) (*RAGFlowConversation, error)
-	ListRAGFlowConversations(ctx context.Context, find *FindRAGFlowConversation) ([]*RAGFlowConversation, error)
-	UpdateRAGFlowConversation(ctx context.Context, update *UpdateRAGFlowConversation) error
-	DeleteRAGFlowConversation(ctx context.Context, delete *DeleteRAGFlowConversation) error
-
-	// RAGFlowMessage model related methods.
-	CreateRAGFlowMessage(ctx context.Context, create *RAGFlowMessage) (*RAGFlowMessage, error)
-	ListRAGFlowMessages(ctx context.Context, find *FindRAGFlowMessage) ([]*RAGFlowMessage, error)
-	DeleteRAGFlowMessage(ctx context.Context, delete *DeleteRAGFlowMessage) error
 }

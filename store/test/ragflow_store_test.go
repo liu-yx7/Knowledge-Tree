@@ -155,7 +155,7 @@ func TestContentSyncStateStore(t *testing.T) {
 	assert.Nil(t, deletedState)
 }
 
-func TestRAGFlowConversationStore(t *testing.T) {
+func TestAIConversationStore(t *testing.T) {
 	ctx := context.Background()
 	ts := NewTestingStore(ctx, t)
 
@@ -164,20 +164,19 @@ func TestRAGFlowConversationStore(t *testing.T) {
 	require.NoError(t, err)
 
 	// ==================== 测试 Create ====================
-	conversation := &store.RAGFlowConversation{
-		UID:              "conv_uid_123",
-		UserID:           user.ID,
-		RAGFlowSessionID: "session_456",
-		Title:            "Test Conversation",
+	conversation := &store.AIConversation{
+		UID:    "conv_uid_123",
+		UserID: user.ID,
+		Title:  "Test Conversation",
 	}
-	createdConv, err := ts.CreateRAGFlowConversation(ctx, conversation)
+	createdConv, err := ts.CreateAIConversation(ctx, conversation)
 	require.NoError(t, err)
 	assert.NotZero(t, createdConv.ID)
 	assert.Equal(t, "conv_uid_123", createdConv.UID)
 	assert.Equal(t, store.Normal, createdConv.RowStatus)
 
 	// ==================== 测试 Get ====================
-	foundConv, err := ts.GetRAGFlowConversation(ctx, &store.FindRAGFlowConversation{
+	foundConv, err := ts.GetAIConversation(ctx, &store.FindAIConversation{
 		UID: &conversation.UID,
 	})
 	require.NoError(t, err)
@@ -185,7 +184,7 @@ func TestRAGFlowConversationStore(t *testing.T) {
 	assert.Equal(t, createdConv.ID, foundConv.ID)
 
 	// ==================== 测试 List ====================
-	conversations, err := ts.ListRAGFlowConversations(ctx, &store.FindRAGFlowConversation{
+	conversations, err := ts.ListAIConversations(ctx, &store.FindAIConversation{
 		UserID: &user.ID,
 	})
 	require.NoError(t, err)
@@ -193,32 +192,32 @@ func TestRAGFlowConversationStore(t *testing.T) {
 
 	// ==================== 测试 Update ====================
 	newTitle := "Updated Title"
-	err = ts.UpdateRAGFlowConversation(ctx, &store.UpdateRAGFlowConversation{
+	err = ts.UpdateAIConversation(ctx, &store.UpdateAIConversation{
 		ID:    createdConv.ID,
 		Title: &newTitle,
 	})
 	require.NoError(t, err)
 
-	updatedConv, err := ts.GetRAGFlowConversation(ctx, &store.FindRAGFlowConversation{
+	updatedConv, err := ts.GetAIConversation(ctx, &store.FindAIConversation{
 		ID: &createdConv.ID,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Updated Title", updatedConv.Title)
 
 	// ==================== 测试 Delete ====================
-	err = ts.DeleteRAGFlowConversation(ctx, &store.DeleteRAGFlowConversation{
-		ID: &createdConv.ID,
+	err = ts.DeleteAIConversation(ctx, &store.DeleteAIConversation{
+		ID: createdConv.ID,
 	})
 	require.NoError(t, err)
 
-	deletedConv, err := ts.GetRAGFlowConversation(ctx, &store.FindRAGFlowConversation{
+	deletedConv, err := ts.GetAIConversation(ctx, &store.FindAIConversation{
 		ID: &createdConv.ID,
 	})
 	require.NoError(t, err)
 	assert.Nil(t, deletedConv)
 }
 
-func TestRAGFlowMessageStore(t *testing.T) {
+func TestAIMessageStore(t *testing.T) {
 	ctx := context.Background()
 	ts := NewTestingStore(ctx, t)
 
@@ -226,50 +225,42 @@ func TestRAGFlowMessageStore(t *testing.T) {
 	user, err := createTestingHostUser(ctx, ts)
 	require.NoError(t, err)
 
-	conversation := &store.RAGFlowConversation{
-		UID:              "conv_msg_test",
-		UserID:           user.ID,
-		RAGFlowSessionID: "session_msg_test",
-		Title:            "Message Test Conversation",
+	conversation := &store.AIConversation{
+		UID:    "conv_msg_test",
+		UserID: user.ID,
+		Title:  "Message Test Conversation",
 	}
-	createdConv, err := ts.CreateRAGFlowConversation(ctx, conversation)
+	createdConv, err := ts.CreateAIConversation(ctx, conversation)
 	require.NoError(t, err)
 
 	// ==================== 测试 Create ====================
-	message := &store.RAGFlowMessage{
+	message := &store.AIMessage{
 		UID:            "msg_uid_123",
 		ConversationID: createdConv.ID,
-		Role:           store.RAGFlowMessageRoleUser,
+		Role:           store.AIMessageRoleUser,
 		Content:        "Hello, this is a test message",
-		ReferencesJSON: "[]",
 	}
-	createdMsg, err := ts.CreateRAGFlowMessage(ctx, message)
+	createdMsg, err := ts.CreateAIMessage(ctx, message)
 	require.NoError(t, err)
 	assert.NotZero(t, createdMsg.ID)
-	assert.Equal(t, store.RAGFlowMessageRoleUser, createdMsg.Role)
+	assert.Equal(t, store.AIMessageRoleUser, createdMsg.Role)
 
-	// 创建助手回复
-	assistantMsg := &store.RAGFlowMessage{
-		UID:            "msg_uid_456",
-		ConversationID: createdConv.ID,
-		Role:           store.RAGFlowMessageRoleAssistant,
-		Content:        "Hello! How can I help you?",
-		ReferencesJSON: `[{"memo_uid":"memo_1","content_snippet":"test snippet","similarity_score":0.95}]`,
+	// 创建助手回复（含引用和思考链）
+	assistantMsg := &store.AIMessage{
+		UID:              "msg_uid_456",
+		ConversationID:   createdConv.ID,
+		Role:             store.AIMessageRoleAssistant,
+		Content:          "Hello! How can I help you?",
+		ReasoningContent: "The user is greeting me, I should respond politely.",
+		ReferencesJSON:   `[{"memo_uid":"memo_1","type":"memo","content_snippet":"test snippet","similarity":0.95}]`,
+		TokenUsageJSON:   `{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}`,
 	}
-	createdAssistantMsg, err := ts.CreateRAGFlowMessage(ctx, assistantMsg)
+	createdAssistantMsg, err := ts.CreateAIMessage(ctx, assistantMsg)
 	require.NoError(t, err)
-	assert.Equal(t, store.RAGFlowMessageRoleAssistant, createdAssistantMsg.Role)
-
-	// ==================== 测试 Get ====================
-	foundMsg, err := ts.GetRAGFlowMessage(ctx, &store.FindRAGFlowMessage{
-		UID: &message.UID,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, foundMsg)
-	assert.Equal(t, createdMsg.ID, foundMsg.ID)
+	assert.Equal(t, store.AIMessageRoleAssistant, createdAssistantMsg.Role)
 
 	// ==================== 测试 List ====================
-	messages, err := ts.ListRAGFlowMessages(ctx, &store.FindRAGFlowMessage{
+	messages, err := ts.ListAIMessages(ctx, &store.FindAIMessage{
 		ConversationID: &createdConv.ID,
 	})
 	require.NoError(t, err)
@@ -277,20 +268,25 @@ func TestRAGFlowMessageStore(t *testing.T) {
 
 	// 测试排序
 	orderASC := "ASC"
-	messagesASC, err := ts.ListRAGFlowMessages(ctx, &store.FindRAGFlowMessage{
+	messagesASC, err := ts.ListAIMessages(ctx, &store.FindAIMessage{
 		ConversationID: &createdConv.ID,
 		OrderByCreated: &orderASC,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, store.RAGFlowMessageRoleUser, messagesASC[0].Role) // 用户消息在前
+	assert.Equal(t, store.AIMessageRoleUser, messagesASC[0].Role) // 用户消息在前
+
+	// 验证引用和思考链字段
+	assert.NotEmpty(t, messagesASC[1].ReferencesJSON)
+	assert.NotEmpty(t, messagesASC[1].ReasoningContent)
+	assert.NotEmpty(t, messagesASC[1].TokenUsageJSON)
 
 	// ==================== 测试 Delete by ConversationID ====================
-	err = ts.DeleteRAGFlowMessage(ctx, &store.DeleteRAGFlowMessage{
+	err = ts.DeleteAIMessage(ctx, &store.DeleteAIMessage{
 		ConversationID: &createdConv.ID,
 	})
 	require.NoError(t, err)
 
-	remainingMsgs, err := ts.ListRAGFlowMessages(ctx, &store.FindRAGFlowMessage{
+	remainingMsgs, err := ts.ListAIMessages(ctx, &store.FindAIMessage{
 		ConversationID: &createdConv.ID,
 	})
 	require.NoError(t, err)

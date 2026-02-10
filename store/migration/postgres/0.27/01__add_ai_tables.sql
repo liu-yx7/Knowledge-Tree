@@ -1,4 +1,5 @@
 -- ai_conversation: stores chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE IF NOT EXISTS ai_conversation (
   id SERIAL PRIMARY KEY,
   uid VARCHAR(256) NOT NULL UNIQUE,
@@ -6,23 +7,24 @@ CREATE TABLE IF NOT EXISTS ai_conversation (
   title VARCHAR(512) NOT NULL DEFAULT 'New Chat',
   created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
   updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
-  row_status VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
-  model VARCHAR(128) NOT NULL DEFAULT '',
-  provider VARCHAR(64) NOT NULL DEFAULT ''
+  row_status VARCHAR(16) NOT NULL DEFAULT 'NORMAL'
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_conversation_user_id ON ai_conversation(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_conversation_created_ts ON ai_conversation(created_ts);
 
 -- ai_message: stores individual messages in conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE IF NOT EXISTS ai_message (
   id SERIAL PRIMARY KEY,
   uid VARCHAR(256) NOT NULL UNIQUE,
   conversation_id INT NOT NULL REFERENCES ai_conversation(id) ON DELETE CASCADE,
   role VARCHAR(16) NOT NULL,
   content TEXT NOT NULL DEFAULT '',
-  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
-  token_count INT NOT NULL DEFAULT 0
+  reasoning_content TEXT NOT NULL DEFAULT '',
+  references_json TEXT NOT NULL DEFAULT '',
+  token_usage_json TEXT NOT NULL DEFAULT '',
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_message_conversation_id ON ai_message(conversation_id);

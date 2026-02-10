@@ -9,14 +9,11 @@ import (
 )
 
 func (d *DB) CreateAIMessage(ctx context.Context, create *store.AIMessage) (*store.AIMessage, error) {
-	fields := []string{"uid", "conversation_id", "role", "content", "token_count"}
-	args := []any{create.UID, create.ConversationID, create.Role, create.Content, create.TokenCount}
-
-	stmt := "INSERT INTO ai_message (" + strings.Join(fields, ", ") + ") VALUES ($1, $2, $3, $4, $5) RETURNING id, created_ts"
-	if err := d.db.QueryRowContext(ctx, stmt, args...).Scan(
-		&create.ID,
-		&create.CreatedTs,
-	); err != nil {
+	stmt := "INSERT INTO ai_message (uid, conversation_id, role, content, reasoning_content, references_json, token_usage_json) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_ts"
+	if err := d.db.QueryRowContext(ctx, stmt,
+		create.UID, create.ConversationID, create.Role, create.Content,
+		create.ReasoningContent, create.ReferencesJSON, create.TokenUsageJSON,
+	).Scan(&create.ID, &create.CreatedTs); err != nil {
 		return nil, err
 	}
 	return create, nil
@@ -44,7 +41,7 @@ func (d *DB) ListAIMessages(ctx context.Context, find *store.FindAIMessage) ([]*
 		orderBy = "DESC"
 	}
 
-	query := "SELECT id, uid, conversation_id, role, content, created_ts, token_count FROM ai_message WHERE " + strings.Join(where, " AND ") + " ORDER BY created_ts " + orderBy
+	query := "SELECT id, uid, conversation_id, role, content, reasoning_content, references_json, token_usage_json, created_ts FROM ai_message WHERE " + strings.Join(where, " AND ") + " ORDER BY created_ts " + orderBy
 
 	if find.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
@@ -69,8 +66,10 @@ func (d *DB) ListAIMessages(ctx context.Context, find *store.FindAIMessage) ([]*
 			&message.ConversationID,
 			&role,
 			&message.Content,
+			&message.ReasoningContent,
+			&message.ReferencesJSON,
+			&message.TokenUsageJSON,
 			&message.CreatedTs,
-			&message.TokenCount,
 		); err != nil {
 			return nil, err
 		}
@@ -94,7 +93,6 @@ func (d *DB) DeleteAIMessage(ctx context.Context, delete *store.DeleteAIMessage)
 	}
 	if delete.ConversationID != nil {
 		where, args = append(where, fmt.Sprintf("conversation_id = $%d", argIndex)), append(args, *delete.ConversationID)
-		argIndex++
 	}
 
 	if len(where) == 0 {

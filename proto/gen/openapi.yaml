@@ -2541,12 +2541,6 @@ components:
                     type: string
                     description: Last update timestamp.
                     format: date-time
-                model:
-                    type: string
-                    description: The AI model used for this conversation.
-                provider:
-                    type: string
-                    description: The AI provider (openai, deepseek, etc.).
                 messages:
                     readOnly: true
                     type: array
@@ -2560,12 +2554,6 @@ components:
                 title:
                     type: string
                     description: Optional title for the conversation.
-                model:
-                    type: string
-                    description: Optional model to use.
-                provider:
-                    type: string
-                    description: Optional provider to use.
         CreatePersonalAccessTokenRequest:
             required:
                 - parent
@@ -3193,9 +3181,8 @@ components:
                         - MESSAGE_ROLE_UNSPECIFIED
                         - USER
                         - ASSISTANT
-                        - SYSTEM
                     type: string
-                    description: Role of the message sender (user, assistant, system).
+                    description: Role of the message sender (user, assistant).
                     format: enum
                 content:
                     type: string
@@ -3205,11 +3192,14 @@ components:
                     type: string
                     description: Creation timestamp.
                     format: date-time
-                tokenCount:
+                reasoningContent:
                     readOnly: true
-                    type: integer
-                    description: Token count for this message.
-                    format: int32
+                    type: string
+                    description: Reasoning content (DeepSeek-style thinking chain, optional).
+                referencesJson:
+                    readOnly: true
+                    type: string
+                    description: References JSON (knowledge source citations from RAGFlow).
             description: Message represents a single message in a conversation.
         OAuth2Config:
             type: object
@@ -3585,10 +3575,6 @@ components:
                 conversationId:
                     type: string
                 title:
-                    type: string
-                model:
-                    type: string
-                provider:
                     type: string
         UpsertMemoReactionRequest:
             required:

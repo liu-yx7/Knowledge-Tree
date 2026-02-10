@@ -14,7 +14,7 @@ import type { Message as Message$1 } from "@bufbuild/protobuf";
  * Describes the file api/v1/ai_service.proto.
  */
 export const file_api_v1_ai_service: GenFile = /*@__PURE__*/
-  fileDesc("ChdhcGkvdjEvYWlfc2VydmljZS5wcm90bxIMbWVtb3MuYXBpLnYxIvwBCgxDb252ZXJzYXRpb24SDwoCaWQYASABKAlCA+BBAxIRCgR1c2VyGAIgASgJQgPgQQMSDQoFdGl0bGUYAyABKAkSNAoLY3JlYXRlX3RpbWUYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgPgQQMSNAoLdXBkYXRlX3RpbWUYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgPgQQMSDQoFbW9kZWwYBiABKAkSEAoIcHJvdmlkZXIYByABKAkSLAoIbWVzc2FnZXMYCCADKAsyFS5tZW1vcy5hcGkudjEuTWVzc2FnZUID4EEDIqQBCgdNZXNzYWdlEg8KAmlkGAEgASgJQgPgQQMSJwoEcm9sZRgCIAEoDjIZLm1lbW9zLmFwaS52MS5NZXNzYWdlUm9sZRIPCgdjb250ZW50GAMgASgJEjQKC2NyZWF0ZV90aW1lGAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEID4EEDEhgKC3Rva2VuX2NvdW50GAUgASgFQgPgQQMiWgoZQ3JlYXRlQ29udmVyc2F0aW9uUmVxdWVzdBISCgV0aXRsZRgBIAEoCUID4EEBEhIKBW1vZGVsGAIgASgJQgPgQQESFQoIcHJvdmlkZXIYAyABKAlCA+BBASJLChhMaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QSFgoJcGFnZV9zaXplGAEgASgFQgPgQQESFwoKcGFnZV90b2tlbhgCIAEoCUID4EEBImcKGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USMQoNY29udmVyc2F0aW9ucxgBIAMoCzIaLm1lbW9zLmFwaS52MS5Db252ZXJzYXRpb24SFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIjYKFkdldENvbnZlcnNhdGlvblJlcXVlc3QSHAoPY29udmVyc2F0aW9uX2lkGAEgASgJQgPgQQIiOQoZRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBIcCg9jb252ZXJzYXRpb25faWQYASABKAlCA+BBAiJ4ChlVcGRhdGVDb252ZXJzYXRpb25SZXF1ZXN0EhwKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCUID4EECEhIKBXRpdGxlGAIgASgJQgPgQQESEgoFbW9kZWwYAyABKAlCA+BBARIVCghwcm92aWRlchgEIAEoCUID4EEBIkgKElNlbmRNZXNzYWdlUmVxdWVzdBIcCg9jb252ZXJzYXRpb25faWQYASABKAlCA+BBAhIUCgdjb250ZW50GAIgASgJQgPgQQIidAoTU2VuZE1lc3NhZ2VSZXNwb25zZRIrCgx1c2VyX21lc3NhZ2UYASABKAsyFS5tZW1vcy5hcGkudjEuTWVzc2FnZRIwChFhc3Npc3RhbnRfbWVzc2FnZRgCIAEoCzIVLm1lbW9zLmFwaS52MS5NZXNzYWdlImQKE0xpc3RNZXNzYWdlc1JlcXVlc3QSHAoPY29udmVyc2F0aW9uX2lkGAEgASgJQgPgQQISFgoJcGFnZV9zaXplGAIgASgFQgPgQQESFwoKcGFnZV90b2tlbhgDIAEoCUID4EEBIlgKFExpc3RNZXNzYWdlc1Jlc3BvbnNlEicKCG1lc3NhZ2VzGAEgAygLMhUubWVtb3MuYXBpLnYxLk1lc3NhZ2USFwoPbmV4dF9wYWdlX3Rva2VuGAIgASgJIhQKEkdldEFJQ29uZmlnUmVxdWVzdCKEAQoTR2V0QUlDb25maWdSZXNwb25zZRIPCgdlbmFibGVkGAEgASgIEisKCXByb3ZpZGVycxgCIAMoCzIYLm1lbW9zLmFwaS52MS5BSVByb3ZpZGVyEhgKEGRlZmF1bHRfcHJvdmlkZXIYAyABKAkSFQoNZGVmYXVsdF9tb2RlbBgEIAEoCSJACgpBSVByb3ZpZGVyEgwKBG5hbWUYASABKAkSFAoMZGlzcGxheV9uYW1lGAIgASgJEg4KBm1vZGVscxgDIAMoCSpQCgtNZXNzYWdlUm9sZRIcChhNRVNTQUdFX1JPTEVfVU5TUEVDSUZJRUQQABIICgRVU0VSEAESDQoJQVNTSVNUQU5UEAISCgoGU1lTVEVNEAMy1ggKCUFJU2VydmljZRJ+ChJDcmVhdGVDb252ZXJzYXRpb24SJy5tZW1vcy5hcGkudjEuQ3JlYXRlQ29udmVyc2F0aW9uUmVxdWVzdBoaLm1lbW9zLmFwaS52MS5Db252ZXJzYXRpb24iI4LT5JMCHToBKiIYL2FwaS92MS9haS9jb252ZXJzYXRpb25zEoYBChFMaXN0Q29udmVyc2F0aW9ucxImLm1lbW9zLmFwaS52MS5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5tZW1vcy5hcGkudjEuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZSIggtPkkwIaEhgvYXBpL3YxL2FpL2NvbnZlcnNhdGlvbnMShwEKD0dldENvbnZlcnNhdGlvbhIkLm1lbW9zLmFwaS52MS5HZXRDb252ZXJzYXRpb25SZXF1ZXN0GhoubWVtb3MuYXBpLnYxLkNvbnZlcnNhdGlvbiIygtPkkwIsEiovYXBpL3YxL2FpL2NvbnZlcnNhdGlvbnMve2NvbnZlcnNhdGlvbl9pZH0SiQEKEkRlbGV0ZUNvbnZlcnNhdGlvbhInLm1lbW9zLmFwaS52MS5EZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5IjKC0+STAiwqKi9hcGkvdjEvYWkvY29udmVyc2F0aW9ucy97Y29udmVyc2F0aW9uX2lkfRKQAQoSVXBkYXRlQ29udmVyc2F0aW9uEicubWVtb3MuYXBpLnYxLlVwZGF0ZUNvbnZlcnNhdGlvblJlcXVlc3QaGi5tZW1vcy5hcGkudjEuQ29udmVyc2F0aW9uIjWC0+STAi86ASoyKi9hcGkvdjEvYWkvY29udmVyc2F0aW9ucy97Y29udmVyc2F0aW9uX2lkfRKSAQoLU2VuZE1lc3NhZ2USIC5tZW1vcy5hcGkudjEuU2VuZE1lc3NhZ2VSZXF1ZXN0GiEubWVtb3MuYXBpLnYxLlNlbmRNZXNzYWdlUmVzcG9uc2UiPoLT5JMCODoBKiIzL2FwaS92MS9haS9jb252ZXJzYXRpb25zL3tjb252ZXJzYXRpb25faWR9L21lc3NhZ2VzEpIBCgxMaXN0TWVzc2FnZXMSIS5tZW1vcy5hcGkudjEuTGlzdE1lc3NhZ2VzUmVxdWVzdBoiLm1lbW9zLmFwaS52MS5MaXN0TWVzc2FnZXNSZXNwb25zZSI7gtPkkwI1EjMvYXBpL3YxL2FpL2NvbnZlcnNhdGlvbnMve2NvbnZlcnNhdGlvbl9pZH0vbWVzc2FnZXMSbQoLR2V0QUlDb25maWcSIC5tZW1vcy5hcGkudjEuR2V0QUlDb25maWdSZXF1ZXN0GiEubWVtb3MuYXBpLnYxLkdldEFJQ29uZmlnUmVzcG9uc2UiGYLT5JMCExIRL2FwaS92MS9haS9jb25maWdCpgEKEGNvbS5tZW1vcy5hcGkudjFCDkFpU2VydmljZVByb3RvUAFaMGdpdGh1Yi5jb20vdXNlbWVtb3MvbWVtb3MvcHJvdG8vZ2VuL2FwaS92MTthcGl2MaICA01BWKoCDE1lbW9zLkFwaS5WMcoCDE1lbW9zXEFwaVxWMeICGE1lbW9zXEFwaVxWMVxHUEJNZXRhZGF0YeoCDk1lbW9zOjpBcGk6OlYxYgZwcm90bzM", [file_google_api_annotations, file_google_api_field_behavior, file_google_protobuf_empty, file_google_protobuf_timestamp]);
+  fileDesc("ChdhcGkvdjEvYWlfc2VydmljZS5wcm90bxIMbWVtb3MuYXBpLnYxItsBCgxDb252ZXJzYXRpb24SDwoCaWQYASABKAlCA+BBAxIRCgR1c2VyGAIgASgJQgPgQQMSDQoFdGl0bGUYAyABKAkSNAoLY3JlYXRlX3RpbWUYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgPgQQMSNAoLdXBkYXRlX3RpbWUYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wQgPgQQMSLAoIbWVzc2FnZXMYCCADKAsyFS5tZW1vcy5hcGkudjEuTWVzc2FnZUID4EEDIsgBCgdNZXNzYWdlEg8KAmlkGAEgASgJQgPgQQMSJwoEcm9sZRgCIAEoDjIZLm1lbW9zLmFwaS52MS5NZXNzYWdlUm9sZRIPCgdjb250ZW50GAMgASgJEjQKC2NyZWF0ZV90aW1lGAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcEID4EEDEh4KEXJlYXNvbmluZ19jb250ZW50GAUgASgJQgPgQQMSHAoPcmVmZXJlbmNlc19qc29uGAYgASgJQgPgQQMiLwoZQ3JlYXRlQ29udmVyc2F0aW9uUmVxdWVzdBISCgV0aXRsZRgBIAEoCUID4EEBIksKGExpc3RDb252ZXJzYXRpb25zUmVxdWVzdBIWCglwYWdlX3NpemUYASABKAVCA+BBARIXCgpwYWdlX3Rva2VuGAIgASgJQgPgQQEiZwoZTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRIxCg1jb252ZXJzYXRpb25zGAEgAygLMhoubWVtb3MuYXBpLnYxLkNvbnZlcnNhdGlvbhIXCg9uZXh0X3BhZ2VfdG9rZW4YAiABKAkiNgoWR2V0Q29udmVyc2F0aW9uUmVxdWVzdBIcCg9jb252ZXJzYXRpb25faWQYASABKAlCA+BBAiI5ChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EhwKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCUID4EECIk0KGVVwZGF0ZUNvbnZlcnNhdGlvblJlcXVlc3QSHAoPY29udmVyc2F0aW9uX2lkGAEgASgJQgPgQQISEgoFdGl0bGUYAiABKAlCA+BBASJIChJTZW5kTWVzc2FnZVJlcXVlc3QSHAoPY29udmVyc2F0aW9uX2lkGAEgASgJQgPgQQISFAoHY29udGVudBgCIAEoCUID4EECInQKE1NlbmRNZXNzYWdlUmVzcG9uc2USKwoMdXNlcl9tZXNzYWdlGAEgASgLMhUubWVtb3MuYXBpLnYxLk1lc3NhZ2USMAoRYXNzaXN0YW50X21lc3NhZ2UYAiABKAsyFS5tZW1vcy5hcGkudjEuTWVzc2FnZSJkChNMaXN0TWVzc2FnZXNSZXF1ZXN0EhwKD2NvbnZlcnNhdGlvbl9pZBgBIAEoCUID4EECEhYKCXBhZ2Vfc2l6ZRgCIAEoBUID4EEBEhcKCnBhZ2VfdG9rZW4YAyABKAlCA+BBASJYChRMaXN0TWVzc2FnZXNSZXNwb25zZRInCghtZXNzYWdlcxgBIAMoCzIVLm1lbW9zLmFwaS52MS5NZXNzYWdlEhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIUChJHZXRBSUNvbmZpZ1JlcXVlc3QihAEKE0dldEFJQ29uZmlnUmVzcG9uc2USDwoHZW5hYmxlZBgBIAEoCBIrCglwcm92aWRlcnMYAiADKAsyGC5tZW1vcy5hcGkudjEuQUlQcm92aWRlchIYChBkZWZhdWx0X3Byb3ZpZGVyGAMgASgJEhUKDWRlZmF1bHRfbW9kZWwYBCABKAkiQAoKQUlQcm92aWRlchIMCgRuYW1lGAEgASgJEhQKDGRpc3BsYXlfbmFtZRgCIAEoCRIOCgZtb2RlbHMYAyADKAkqRAoLTWVzc2FnZVJvbGUSHAoYTUVTU0FHRV9ST0xFX1VOU1BFQ0lGSUVEEAASCAoEVVNFUhABEg0KCUFTU0lTVEFOVBACMtYICglBSVNlcnZpY2USfgoSQ3JlYXRlQ29udmVyc2F0aW9uEicubWVtb3MuYXBpLnYxLkNyZWF0ZUNvbnZlcnNhdGlvblJlcXVlc3QaGi5tZW1vcy5hcGkudjEuQ29udmVyc2F0aW9uIiOC0+STAh06ASoiGC9hcGkvdjEvYWkvY29udmVyc2F0aW9ucxKGAQoRTGlzdENvbnZlcnNhdGlvbnMSJi5tZW1vcy5hcGkudjEuTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0GicubWVtb3MuYXBpLnYxLkxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2UiIILT5JMCGhIYL2FwaS92MS9haS9jb252ZXJzYXRpb25zEocBCg9HZXRDb252ZXJzYXRpb24SJC5tZW1vcy5hcGkudjEuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBoaLm1lbW9zLmFwaS52MS5Db252ZXJzYXRpb24iMoLT5JMCLBIqL2FwaS92MS9haS9jb252ZXJzYXRpb25zL3tjb252ZXJzYXRpb25faWR9EokBChJEZWxldGVDb252ZXJzYXRpb24SJy5tZW1vcy5hcGkudjEuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eSIygtPkkwIsKiovYXBpL3YxL2FpL2NvbnZlcnNhdGlvbnMve2NvbnZlcnNhdGlvbl9pZH0SkAEKElVwZGF0ZUNvbnZlcnNhdGlvbhInLm1lbW9zLmFwaS52MS5VcGRhdGVDb252ZXJzYXRpb25SZXF1ZXN0GhoubWVtb3MuYXBpLnYxLkNvbnZlcnNhdGlvbiI1gtPkkwIvOgEqMiovYXBpL3YxL2FpL2NvbnZlcnNhdGlvbnMve2NvbnZlcnNhdGlvbl9pZH0SkgEKC1NlbmRNZXNzYWdlEiAubWVtb3MuYXBpLnYxLlNlbmRNZXNzYWdlUmVxdWVzdBohLm1lbW9zLmFwaS52MS5TZW5kTWVzc2FnZVJlc3BvbnNlIj6C0+STAjg6ASoiMy9hcGkvdjEvYWkvY29udmVyc2F0aW9ucy97Y29udmVyc2F0aW9uX2lkfS9tZXNzYWdlcxKSAQoMTGlzdE1lc3NhZ2VzEiEubWVtb3MuYXBpLnYxLkxpc3RNZXNzYWdlc1JlcXVlc3QaIi5tZW1vcy5hcGkudjEuTGlzdE1lc3NhZ2VzUmVzcG9uc2UiO4LT5JMCNRIzL2FwaS92MS9haS9jb252ZXJzYXRpb25zL3tjb252ZXJzYXRpb25faWR9L21lc3NhZ2VzEm0KC0dldEFJQ29uZmlnEiAubWVtb3MuYXBpLnYxLkdldEFJQ29uZmlnUmVxdWVzdBohLm1lbW9zLmFwaS52MS5HZXRBSUNvbmZpZ1Jlc3BvbnNlIhmC0+STAhMSES9hcGkvdjEvYWkvY29uZmlnQqYBChBjb20ubWVtb3MuYXBpLnYxQg5BaVNlcnZpY2VQcm90b1ABWjBnaXRodWIuY29tL3VzZW1lbW9zL21lbW9zL3Byb3RvL2dlbi9hcGkvdjE7YXBpdjGiAgNNQViqAgxNZW1vcy5BcGkuVjHKAgxNZW1vc1xBcGlcVjHiAhhNZW1vc1xBcGlcVjFcR1BCTWV0YWRhdGHqAg5NZW1vczo6QXBpOjpWMWIGcHJvdG8z", [file_google_api_annotations, file_google_api_field_behavior, file_google_protobuf_empty, file_google_protobuf_timestamp]);
 
 /**
  * Conversation represents an AI chat conversation.
@@ -58,20 +58,6 @@ export type Conversation = Message$1<"memos.api.v1.Conversation"> & {
   updateTime?: Timestamp;
 
   /**
-   * The AI model used for this conversation.
-   *
-   * @generated from field: string model = 6;
-   */
-  model: string;
-
-  /**
-   * The AI provider (openai, deepseek, etc.).
-   *
-   * @generated from field: string provider = 7;
-   */
-  provider: string;
-
-  /**
    * Messages in this conversation (populated on GetConversation).
    *
    * @generated from field: repeated memos.api.v1.Message messages = 8;
@@ -100,7 +86,7 @@ export type Message = Message$1<"memos.api.v1.Message"> & {
   id: string;
 
   /**
-   * Role of the message sender (user, assistant, system).
+   * Role of the message sender (user, assistant).
    *
    * @generated from field: memos.api.v1.MessageRole role = 2;
    */
@@ -121,11 +107,18 @@ export type Message = Message$1<"memos.api.v1.Message"> & {
   createTime?: Timestamp;
 
   /**
-   * Token count for this message.
+   * Reasoning content (DeepSeek-style thinking chain, optional).
    *
-   * @generated from field: int32 token_count = 5;
+   * @generated from field: string reasoning_content = 5;
    */
-  tokenCount: number;
+  reasoningContent: string;
+
+  /**
+   * References JSON (knowledge source citations from RAGFlow).
+   *
+   * @generated from field: string references_json = 6;
+   */
+  referencesJson: string;
 };
 
 /**
@@ -145,20 +138,6 @@ export type CreateConversationRequest = Message$1<"memos.api.v1.CreateConversati
    * @generated from field: string title = 1;
    */
   title: string;
-
-  /**
-   * Optional model to use.
-   *
-   * @generated from field: string model = 2;
-   */
-  model: string;
-
-  /**
-   * Optional provider to use.
-   *
-   * @generated from field: string provider = 3;
-   */
-  provider: string;
 };
 
 /**
@@ -263,16 +242,6 @@ export type UpdateConversationRequest = Message$1<"memos.api.v1.UpdateConversati
    * @generated from field: string title = 2;
    */
   title: string;
-
-  /**
-   * @generated from field: string model = 3;
-   */
-  model: string;
-
-  /**
-   * @generated from field: string provider = 4;
-   */
-  provider: string;
 };
 
 /**
@@ -473,11 +442,6 @@ export enum MessageRole {
    * @generated from enum value: ASSISTANT = 2;
    */
   ASSISTANT = 2,
-
-  /**
-   * @generated from enum value: SYSTEM = 3;
-   */
-  SYSTEM = 3,
 }
 
 /**

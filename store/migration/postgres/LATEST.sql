@@ -107,6 +107,7 @@ CREATE TABLE reaction (
 );
 
 -- ai_conversation: stores AI chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE ai_conversation (
   id SERIAL PRIMARY KEY,
   uid TEXT NOT NULL UNIQUE,
@@ -114,23 +115,24 @@ CREATE TABLE ai_conversation (
   title TEXT NOT NULL DEFAULT 'New Chat',
   created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
   updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  row_status TEXT NOT NULL DEFAULT 'NORMAL',
-  model TEXT NOT NULL DEFAULT '',
-  provider TEXT NOT NULL DEFAULT ''
+  row_status TEXT NOT NULL DEFAULT 'NORMAL'
 );
 
 CREATE INDEX idx_ai_conversation_user_id ON ai_conversation(user_id);
 CREATE INDEX idx_ai_conversation_created_ts ON ai_conversation(created_ts);
 
 -- ai_message: stores individual messages in AI conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE ai_message (
   id SERIAL PRIMARY KEY,
   uid TEXT NOT NULL UNIQUE,
   conversation_id INTEGER NOT NULL REFERENCES ai_conversation(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
   content TEXT NOT NULL DEFAULT '',
-  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  token_count INTEGER NOT NULL DEFAULT 0
+  reasoning_content TEXT NOT NULL DEFAULT '',
+  references_json TEXT NOT NULL DEFAULT '',
+  token_usage_json TEXT NOT NULL DEFAULT '',
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
 );
 
 CREATE INDEX idx_ai_message_conversation_id ON ai_message(conversation_id);
@@ -206,38 +208,3 @@ CREATE TABLE content_sync_state (
 CREATE INDEX idx_content_sync_state_owner_id ON content_sync_state(owner_id);
 CREATE INDEX idx_content_sync_state_status ON content_sync_state(ragflow_status);
 CREATE INDEX idx_content_sync_state_retry ON content_sync_state(next_retry_ts) WHERE ragflow_status IN ('pending', 'failed');
-
--- ==================== RAGFlow 对话表 ====================
--- 存储用户与 RAGFlow Chat Assistant 的对话
-
-CREATE TABLE ragflow_conversation (
-  id SERIAL PRIMARY KEY,
-  uid VARCHAR(255) NOT NULL UNIQUE,
-  user_id INT NOT NULL,
-  ragflow_session_id VARCHAR(255) NOT NULL,
-  title VARCHAR(255) NOT NULL DEFAULT '',
-  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  row_status VARCHAR(10) NOT NULL CHECK (row_status IN ('NORMAL', 'ARCHIVED')) DEFAULT 'NORMAL',
-  FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ragflow_conversation_user_id ON ragflow_conversation(user_id);
-CREATE INDEX idx_ragflow_conversation_session_id ON ragflow_conversation(ragflow_session_id);
-
--- ==================== RAGFlow 消息表 ====================
--- 存储对话中的消息
-
-CREATE TABLE ragflow_message (
-  id SERIAL PRIMARY KEY,
-  uid VARCHAR(255) NOT NULL UNIQUE,
-  conversation_id INT NOT NULL,
-  role VARCHAR(10) NOT NULL CHECK (role IN ('user', 'assistant')),
-  content TEXT NOT NULL DEFAULT '',
-  references_json JSONB NOT NULL DEFAULT '[]',
-  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  FOREIGN KEY (conversation_id) REFERENCES ragflow_conversation(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ragflow_message_conversation_id ON ragflow_message(conversation_id);
-CREATE INDEX idx_ragflow_message_created_ts ON ragflow_message(created_ts);

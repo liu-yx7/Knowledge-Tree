@@ -108,6 +108,7 @@ CREATE TABLE reaction (
 );
 
 -- ai_conversation: stores AI chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE ai_conversation (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   uid TEXT NOT NULL UNIQUE,
@@ -115,23 +116,24 @@ CREATE TABLE ai_conversation (
   title TEXT NOT NULL DEFAULT 'New Chat',
   created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
-  row_status TEXT NOT NULL CHECK (row_status IN ('NORMAL', 'ARCHIVED')) DEFAULT 'NORMAL',
-  model TEXT NOT NULL DEFAULT '',
-  provider TEXT NOT NULL DEFAULT ''
+  row_status TEXT NOT NULL CHECK (row_status IN ('NORMAL', 'ARCHIVED')) DEFAULT 'NORMAL'
 );
 
 CREATE INDEX idx_ai_conversation_user_id ON ai_conversation(user_id);
 CREATE INDEX idx_ai_conversation_created_ts ON ai_conversation(created_ts);
 
 -- ai_message: stores individual messages in AI conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE ai_message (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   uid TEXT NOT NULL UNIQUE,
   conversation_id INTEGER NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content TEXT NOT NULL DEFAULT '',
+  reasoning_content TEXT NOT NULL DEFAULT '',
+  references_json TEXT NOT NULL DEFAULT '',
+  token_usage_json TEXT NOT NULL DEFAULT '',
   created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
-  token_count INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (conversation_id) REFERENCES ai_conversation(id) ON DELETE CASCADE
 );
 
@@ -193,34 +195,3 @@ CREATE TABLE content_sync_state (
 
 CREATE INDEX idx_content_sync_state_owner_id ON content_sync_state(owner_id);
 CREATE INDEX idx_content_sync_state_status ON content_sync_state(ragflow_status);
-
--- ragflow_conversation: stores RAGFlow chat conversations
-CREATE TABLE ragflow_conversation (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  uid TEXT NOT NULL UNIQUE,
-  user_id INTEGER NOT NULL,
-  ragflow_session_id TEXT NOT NULL,
-  title TEXT NOT NULL DEFAULT '',
-  created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
-  updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
-  row_status TEXT NOT NULL CHECK (row_status IN ('NORMAL', 'ARCHIVED')) DEFAULT 'NORMAL',
-  FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ragflow_conversation_user_id ON ragflow_conversation(user_id);
-CREATE INDEX idx_ragflow_conversation_session_id ON ragflow_conversation(ragflow_session_id);
-
--- ragflow_message: stores messages in RAGFlow conversations
-CREATE TABLE ragflow_message (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  uid TEXT NOT NULL UNIQUE,
-  conversation_id INTEGER NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-  content TEXT NOT NULL DEFAULT '',
-  references_json TEXT NOT NULL DEFAULT '[]',
-  created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
-  FOREIGN KEY (conversation_id) REFERENCES ragflow_conversation(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_ragflow_message_conversation_id ON ragflow_message(conversation_id);
-CREATE INDEX idx_ragflow_message_created_ts ON ragflow_message(created_ts);

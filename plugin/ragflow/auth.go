@@ -230,7 +230,7 @@ func (c *AuthClient) parseAuthResponse(resp *http.Response, operation string) (*
 
 	// 检查业务错误
 	if result.Code != 0 {
-		return nil, classifyAuthError(result.Code, result.Message)
+		return nil, ClassifyAuthError(result.Code, result.Message)
 	}
 
 	// 提取 Authorization Token（从 Response Header）
@@ -253,8 +253,8 @@ func (c *AuthClient) parseAuthResponse(resp *http.Response, operation string) (*
 	}, nil
 }
 
-// classifyAuthError 根据 RAGFlow 错误消息分类错误类型
-func classifyAuthError(code int, message string) *AuthError {
+// ClassifyAuthError 根据 RAGFlow 错误消息分类错误类型
+func ClassifyAuthError(code int, message string) *AuthError {
 	msg := strings.ToLower(message)
 
 	kind := AuthErrorUnknown
@@ -285,3 +285,23 @@ func classifyAuthError(code int, message string) *AuthError {
 
 // defaultTimeout 默认请求超时
 const defaultTimeout = 30 * time.Second
+
+// NewAuthClientForTesting 创建测试用 AuthClient（跳过配置验证和公钥文件加载）
+// 仅供测试使用，直接接受 baseURL 和 PEM 格式公钥
+func NewAuthClientForTesting(baseURL string, publicKeyPEM []byte) (*AuthClient, error) {
+	enc, err := NewEncryptor(publicKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("创建 Encryptor 失败: %w", err)
+	}
+
+	return &AuthClient{
+		config: &Config{BaseURL: baseURL},
+		encryptor: enc,
+		http: &http.Client{
+			Timeout: defaultTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}, nil
+}

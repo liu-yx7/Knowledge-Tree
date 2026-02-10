@@ -1,4 +1,4 @@
-package ragflow
+package ragflow_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	ragflow "github.com/usememos/memos/plugin/ragflow"
 	"github.com/usememos/memos/store"
 )
 
@@ -96,16 +97,16 @@ func (m *mockProvisionerStore) UpdateRAGFlowUserMapping(_ context.Context, updat
 // ==================== 测试辅助 ====================
 
 // newTestProvisioner 创建连接 Mock Server 和 Mock Store 的 Provisioner
-func newTestProvisioner(t *testing.T, serverURL string, mockStore *mockProvisionerStore) *Provisioner {
+func newTestProvisioner(t *testing.T, serverURL string, mockStore *mockProvisionerStore) *ragflow.Provisioner {
 	t.Helper()
 
-	cfg := &Config{
+	cfg := &ragflow.Config{
 		BaseURL: serverURL,
 	}
 
 	authClient := newTestAuthClient(t, serverURL)
 
-	p, err := NewProvisionerWithAuthClient(cfg, mockStore, authClient)
+	p, err := ragflow.NewProvisionerWithAuthClient(cfg, mockStore, authClient)
 	if err != nil {
 		t.Fatalf("创建 Provisioner 失败: %v", err)
 	}
@@ -115,23 +116,23 @@ func newTestProvisioner(t *testing.T, serverURL string, mockStore *mockProvision
 // ==================== NewProvisioner 测试 ====================
 
 func TestNewProvisioner_NilConfig(t *testing.T) {
-	_, err := NewProvisioner(nil, newMockStore())
+	_, err := ragflow.NewProvisioner(nil, newMockStore())
 	if err == nil {
 		t.Fatal("nil 配置应返回错误")
 	}
 }
 
 func TestNewProvisioner_NilStore(t *testing.T) {
-	cfg := &Config{BaseURL: "http://localhost:9380"}
-	_, err := NewProvisioner(cfg, nil)
+	cfg := &ragflow.Config{BaseURL: "http://localhost:9380"}
+	_, err := ragflow.NewProvisioner(cfg, nil)
 	if err == nil {
 		t.Fatal("nil 存储应返回错误")
 	}
 }
 
 func TestNewProvisionerWithAuthClient_NilAuthClient(t *testing.T) {
-	cfg := &Config{BaseURL: "http://localhost:9380"}
-	_, err := NewProvisionerWithAuthClient(cfg, newMockStore(), nil)
+	cfg := &ragflow.Config{BaseURL: "http://localhost:9380"}
+	_, err := ragflow.NewProvisionerWithAuthClient(cfg, newMockStore(), nil)
 	if err == nil {
 		t.Fatal("nil AuthClient 应返回错误")
 	}
@@ -164,8 +165,8 @@ func TestGetClientForUser_ExistingMappingWithAPIKey(t *testing.T) {
 	if client == nil {
 		t.Fatal("Client 为空")
 	}
-	if client.config.APIKey != "ragflow-existing-key" {
-		t.Errorf("API Key 不正确: %s", client.config.APIKey)
+	if client.GetConfig().APIKey != "ragflow-existing-key" {
+		t.Errorf("API Key 不正确: %s", client.GetConfig().APIKey)
 	}
 }
 
@@ -461,12 +462,12 @@ func TestGetClientForUser_StoreCreateError(t *testing.T) {
 func TestGetClientForUser_RAGFlowUnavailable(t *testing.T) {
 	mockStore := newMockStore()
 
-	cfg := &Config{
+	cfg := &ragflow.Config{
 		BaseURL: "http://127.0.0.1:1", // 不可达地址
 	}
 	authClient := newTestAuthClient(t, "http://127.0.0.1:1")
 
-	p, err := NewProvisionerWithAuthClient(cfg, mockStore, authClient)
+	p, err := ragflow.NewProvisionerWithAuthClient(cfg, mockStore, authClient)
 	if err != nil {
 		t.Fatalf("创建 Provisioner 失败: %v", err)
 	}

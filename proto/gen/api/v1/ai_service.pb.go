@@ -30,7 +30,6 @@ const (
 	MessageRole_MESSAGE_ROLE_UNSPECIFIED MessageRole = 0
 	MessageRole_USER                     MessageRole = 1
 	MessageRole_ASSISTANT                MessageRole = 2
-	MessageRole_SYSTEM                   MessageRole = 3
 )
 
 // Enum value maps for MessageRole.
@@ -39,13 +38,11 @@ var (
 		0: "MESSAGE_ROLE_UNSPECIFIED",
 		1: "USER",
 		2: "ASSISTANT",
-		3: "SYSTEM",
 	}
 	MessageRole_value = map[string]int32{
 		"MESSAGE_ROLE_UNSPECIFIED": 0,
 		"USER":                     1,
 		"ASSISTANT":                2,
-		"SYSTEM":                   3,
 	}
 )
 
@@ -89,10 +86,6 @@ type Conversation struct {
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
 	// Last update timestamp.
 	UpdateTime *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=update_time,json=updateTime,proto3" json:"update_time,omitempty"`
-	// The AI model used for this conversation.
-	Model string `protobuf:"bytes,6,opt,name=model,proto3" json:"model,omitempty"`
-	// The AI provider (openai, deepseek, etc.).
-	Provider string `protobuf:"bytes,7,opt,name=provider,proto3" json:"provider,omitempty"`
 	// Messages in this conversation (populated on GetConversation).
 	Messages      []*Message `protobuf:"bytes,8,rep,name=messages,proto3" json:"messages,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -164,20 +157,6 @@ func (x *Conversation) GetUpdateTime() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *Conversation) GetModel() string {
-	if x != nil {
-		return x.Model
-	}
-	return ""
-}
-
-func (x *Conversation) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
 func (x *Conversation) GetMessages() []*Message {
 	if x != nil {
 		return x.Messages
@@ -190,16 +169,18 @@ type Message struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique identifier for the message.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Role of the message sender (user, assistant, system).
+	// Role of the message sender (user, assistant).
 	Role MessageRole `protobuf:"varint,2,opt,name=role,proto3,enum=memos.api.v1.MessageRole" json:"role,omitempty"`
 	// Content of the message.
 	Content string `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
 	// Creation timestamp.
 	CreateTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=create_time,json=createTime,proto3" json:"create_time,omitempty"`
-	// Token count for this message.
-	TokenCount    int32 `protobuf:"varint,5,opt,name=token_count,json=tokenCount,proto3" json:"token_count,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Reasoning content (DeepSeek-style thinking chain, optional).
+	ReasoningContent string `protobuf:"bytes,5,opt,name=reasoning_content,json=reasoningContent,proto3" json:"reasoning_content,omitempty"`
+	// References JSON (knowledge source citations from RAGFlow).
+	ReferencesJson string `protobuf:"bytes,6,opt,name=references_json,json=referencesJson,proto3" json:"references_json,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Message) Reset() {
@@ -260,21 +241,24 @@ func (x *Message) GetCreateTime() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *Message) GetTokenCount() int32 {
+func (x *Message) GetReasoningContent() string {
 	if x != nil {
-		return x.TokenCount
+		return x.ReasoningContent
 	}
-	return 0
+	return ""
+}
+
+func (x *Message) GetReferencesJson() string {
+	if x != nil {
+		return x.ReferencesJson
+	}
+	return ""
 }
 
 type CreateConversationRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Optional title for the conversation.
-	Title string `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
-	// Optional model to use.
-	Model string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
-	// Optional provider to use.
-	Provider      string `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
+	Title         string `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -312,20 +296,6 @@ func (*CreateConversationRequest) Descriptor() ([]byte, []int) {
 func (x *CreateConversationRequest) GetTitle() string {
 	if x != nil {
 		return x.Title
-	}
-	return ""
-}
-
-func (x *CreateConversationRequest) GetModel() string {
-	if x != nil {
-		return x.Model
-	}
-	return ""
-}
-
-func (x *CreateConversationRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
 	}
 	return ""
 }
@@ -528,8 +498,6 @@ type UpdateConversationRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ConversationId string                 `protobuf:"bytes,1,opt,name=conversation_id,json=conversationId,proto3" json:"conversation_id,omitempty"`
 	Title          string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Model          string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
-	Provider       string                 `protobuf:"bytes,4,opt,name=provider,proto3" json:"provider,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -574,20 +542,6 @@ func (x *UpdateConversationRequest) GetConversationId() string {
 func (x *UpdateConversationRequest) GetTitle() string {
 	if x != nil {
 		return x.Title
-	}
-	return ""
-}
-
-func (x *UpdateConversationRequest) GetModel() string {
-	if x != nil {
-		return x.Model
-	}
-	return ""
-}
-
-func (x *UpdateConversationRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
 	}
 	return ""
 }
@@ -980,7 +934,7 @@ var File_api_v1_ai_service_proto protoreflect.FileDescriptor
 
 const file_api_v1_ai_service_proto_rawDesc = "" +
 	"\n" +
-	"\x17api/v1/ai_service.proto\x12\fmemos.api.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc0\x02\n" +
+	"\x17api/v1/ai_service.proto\x12\fmemos.api.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x8e\x02\n" +
 	"\fConversation\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tB\x03\xe0A\x03R\x02id\x12\x17\n" +
 	"\x04user\x18\x02 \x01(\tB\x03\xe0A\x03R\x04user\x12\x14\n" +
@@ -988,22 +942,18 @@ const file_api_v1_ai_service_proto_rawDesc = "" +
 	"\vcreate_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
 	"createTime\x12@\n" +
 	"\vupdate_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"updateTime\x12\x14\n" +
-	"\x05model\x18\x06 \x01(\tR\x05model\x12\x1a\n" +
-	"\bprovider\x18\a \x01(\tR\bprovider\x126\n" +
-	"\bmessages\x18\b \x03(\v2\x15.memos.api.v1.MessageB\x03\xe0A\x03R\bmessages\"\xcf\x01\n" +
+	"updateTime\x126\n" +
+	"\bmessages\x18\b \x03(\v2\x15.memos.api.v1.MessageB\x03\xe0A\x03R\bmessages\"\x89\x02\n" +
 	"\aMessage\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\tB\x03\xe0A\x03R\x02id\x12-\n" +
 	"\x04role\x18\x02 \x01(\x0e2\x19.memos.api.v1.MessageRoleR\x04role\x12\x18\n" +
 	"\acontent\x18\x03 \x01(\tR\acontent\x12@\n" +
 	"\vcreate_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampB\x03\xe0A\x03R\n" +
-	"createTime\x12$\n" +
-	"\vtoken_count\x18\x05 \x01(\x05B\x03\xe0A\x03R\n" +
-	"tokenCount\"r\n" +
+	"createTime\x120\n" +
+	"\x11reasoning_content\x18\x05 \x01(\tB\x03\xe0A\x03R\x10reasoningContent\x12,\n" +
+	"\x0freferences_json\x18\x06 \x01(\tB\x03\xe0A\x03R\x0ereferencesJson\"6\n" +
 	"\x19CreateConversationRequest\x12\x19\n" +
-	"\x05title\x18\x01 \x01(\tB\x03\xe0A\x01R\x05title\x12\x19\n" +
-	"\x05model\x18\x02 \x01(\tB\x03\xe0A\x01R\x05model\x12\x1f\n" +
-	"\bprovider\x18\x03 \x01(\tB\x03\xe0A\x01R\bprovider\"`\n" +
+	"\x05title\x18\x01 \x01(\tB\x03\xe0A\x01R\x05title\"`\n" +
 	"\x18ListConversationsRequest\x12 \n" +
 	"\tpage_size\x18\x01 \x01(\x05B\x03\xe0A\x01R\bpageSize\x12\"\n" +
 	"\n" +
@@ -1014,12 +964,10 @@ const file_api_v1_ai_service_proto_rawDesc = "" +
 	"\x16GetConversationRequest\x12,\n" +
 	"\x0fconversation_id\x18\x01 \x01(\tB\x03\xe0A\x02R\x0econversationId\"I\n" +
 	"\x19DeleteConversationRequest\x12,\n" +
-	"\x0fconversation_id\x18\x01 \x01(\tB\x03\xe0A\x02R\x0econversationId\"\xa0\x01\n" +
+	"\x0fconversation_id\x18\x01 \x01(\tB\x03\xe0A\x02R\x0econversationId\"d\n" +
 	"\x19UpdateConversationRequest\x12,\n" +
 	"\x0fconversation_id\x18\x01 \x01(\tB\x03\xe0A\x02R\x0econversationId\x12\x19\n" +
-	"\x05title\x18\x02 \x01(\tB\x03\xe0A\x01R\x05title\x12\x19\n" +
-	"\x05model\x18\x03 \x01(\tB\x03\xe0A\x01R\x05model\x12\x1f\n" +
-	"\bprovider\x18\x04 \x01(\tB\x03\xe0A\x01R\bprovider\"a\n" +
+	"\x05title\x18\x02 \x01(\tB\x03\xe0A\x01R\x05title\"a\n" +
 	"\x12SendMessageRequest\x12,\n" +
 	"\x0fconversation_id\x18\x01 \x01(\tB\x03\xe0A\x02R\x0econversationId\x12\x1d\n" +
 	"\acontent\x18\x02 \x01(\tB\x03\xe0A\x02R\acontent\"\x93\x01\n" +
@@ -1044,13 +992,11 @@ const file_api_v1_ai_service_proto_rawDesc = "" +
 	"AIProvider\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x16\n" +
-	"\x06models\x18\x03 \x03(\tR\x06models*P\n" +
+	"\x06models\x18\x03 \x03(\tR\x06models*D\n" +
 	"\vMessageRole\x12\x1c\n" +
 	"\x18MESSAGE_ROLE_UNSPECIFIED\x10\x00\x12\b\n" +
 	"\x04USER\x10\x01\x12\r\n" +
-	"\tASSISTANT\x10\x02\x12\n" +
-	"\n" +
-	"\x06SYSTEM\x10\x032\xd6\b\n" +
+	"\tASSISTANT\x10\x022\xd6\b\n" +
 	"\tAIService\x12~\n" +
 	"\x12CreateConversation\x12'.memos.api.v1.CreateConversationRequest\x1a\x1a.memos.api.v1.Conversation\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/api/v1/ai/conversations\x12\x86\x01\n" +
 	"\x11ListConversations\x12&.memos.api.v1.ListConversationsRequest\x1a'.memos.api.v1.ListConversationsResponse\" \x82\xd3\xe4\x93\x02\x1a\x12\x18/api/v1/ai/conversations\x12\x87\x01\n" +

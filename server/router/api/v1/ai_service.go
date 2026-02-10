@@ -11,11 +11,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/usememos/memos/internal/util"
-	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
 )
+
+// ==================== 对话管理 ====================
 
 // CreateConversation creates a new AI conversation.
 func (s *APIV1Service) CreateConversation(ctx context.Context, req *v1pb.CreateConversationRequest) (*v1pb.Conversation, error) {
@@ -34,34 +35,15 @@ func (s *APIV1Service) CreateConversation(ctx context.Context, req *v1pb.CreateC
 		title = "New Chat"
 	}
 
-	// RAGFlow 模式下，provider 和 model 由 RAGFlow 服务管理
-	model := req.Model
-	provider := "ragflow"
-
 	conversation := &store.AIConversation{
-		UID:      util.GenUUID(),
-		UserID:   userID,
-		Title:    title,
-		Model:    model,
-		Provider: provider,
+		UID:    util.GenUUID(),
+		UserID: userID,
+		Title:  title,
 	}
 
 	created, err := s.Store.CreateAIConversation(ctx, conversation)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to create conversation: %v", err)
-	}
-
-	// 如果 RAGFlow 客户端可用，在 RAGFlow 中创建对应的会话
-	if s.RAGFlowClient != nil {
-		assistantID := s.RAGFlowClient.GetConfig().AssistantID
-		if assistantID != "" {
-			session, err := s.RAGFlowClient.CreateSession(ctx, assistantID, title)
-			if err == nil {
-				// 存储 RAGFlow session ID 到 conversation（可选：扩展数据库字段）
-				// 目前使用 UID 作为映射标识
-				_ = session // TODO: 可以将 session.ID 存储到扩展字段
-			}
-		}
 	}
 
 	return convertConversationToProto(created, user.Username), nil
@@ -125,7 +107,7 @@ func (s *APIV1Service) GetConversation(ctx context.Context, req *v1pb.GetConvers
 		return nil, status.Errorf(codes.PermissionDenied, "permission denied")
 	}
 
-	// Fetch messages
+	// 加载消息
 	messages, err := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
 		ConversationID: &conversation.ID,
 	})
@@ -164,6 +146,11 @@ func (s *APIV1Service) DeleteConversation(ctx context.Context, req *v1pb.DeleteC
 		return nil, status.Errorf(codes.PermissionDenied, "permission denied")
 	}
 
+	// 级联删除消息
+	if err := s.Store.DeleteAIMessage(ctx, &store.DeleteAIMessage{ConversationID: &conversation.ID}); err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete messages: %v", err)
+	}
+
 	if err := s.Store.DeleteAIConversation(ctx, &store.DeleteAIConversation{ID: conversation.ID}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete conversation: %v", err)
 	}
@@ -197,12 +184,6 @@ func (s *APIV1Service) UpdateConversation(ctx context.Context, req *v1pb.UpdateC
 	if req.Title != "" {
 		update.Title = &req.Title
 	}
-	if req.Model != "" {
-		update.Model = &req.Model
-	}
-	if req.Provider != "" {
-		update.Provider = &req.Provider
-	}
 	now := time.Now().Unix()
 	update.UpdatedTs = &now
 
@@ -210,11 +191,13 @@ func (s *APIV1Service) UpdateConversation(ctx context.Context, req *v1pb.UpdateC
 		return nil, status.Errorf(codes.Internal, "failed to update conversation: %v", err)
 	}
 
-	// Fetch updated conversation
 	return s.GetConversation(ctx, &v1pb.GetConversationRequest{ConversationId: req.ConversationId})
 }
 
-// SendMessage sends a message and gets AI response via RAGFlow.
+// ==================== 消息发送（P3 临时实现，待 OpenAI 兼容客户端完成后替换） ====================
+
+// SendMessage sends a message and gets AI response.
+// TODO(P3): 当前为占位实现，完整版将使用 OpenAI 兼容 API + 流式 SSE
 func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageRequest) (*v1pb.SendMessageResponse, error) {
 	userID := auth.GetUserID(ctx)
 	if userID == 0 {
@@ -227,7 +210,7 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled (RAGFlow not provisioned for this user)")
 	}
 
-	// Get conversation
+	// 获取对话
 	conversations, err := s.Store.ListAIConversations(ctx, &store.FindAIConversation{
 		UID: &req.ConversationId,
 	})
@@ -243,7 +226,7 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.PermissionDenied, "permission denied")
 	}
 
-	// Save user message
+	// 保存用户消息
 	userMessage := &store.AIMessage{
 		UID:            util.GenUUID(),
 		ConversationID: conversation.ID,
@@ -255,50 +238,41 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.Internal, "failed to save user message: %v", err)
 	}
 
-	// 调用 RAGFlow Chat API（使用 per-user 客户端）
-	assistantID := userClient.GetConfig().AssistantID
-	if assistantID == "" {
-		// 从用户映射中获取 AssistantID
-		mapping, _ := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
-		if mapping != nil {
-			assistantID = mapping.AssistantID
-		}
+	// 获取 AssistantID（从 Provisioner 映射表获取）
+	assistantID := ""
+	mapping, _ := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
+	if mapping != nil {
+		assistantID = mapping.AssistantID
 	}
 	if assistantID == "" {
 		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured for this user")
 	}
 
-	// 使用会话 UID 作为 RAGFlow session ID（简化映射）
-	chatReq := &ragflow.ChatRequest{
-		SessionID: conversation.UID,
-		Question:  req.Content,
-		Stream:    false,
-	}
+	// TODO(P3): 替换为 OpenAI 兼容 API 调用
+	// 当前临时使用 SDK API 的 Retrieve 做简单问答
+	// 完整版将：
+	//   1. 从 DB 加载最近 N 轮历史
+	//   2. 构建 OpenAI messages 数组
+	//   3. 调用 ChatCompletionStream (plugin/ragflow/openai.go)
+	//   4. 流式转发 + 提取引用
+	assistantContent := "AI service is being upgraded to RAGFlow OpenAI compatible API. Please try again later."
 
-	chatResp, err := userClient.Chat(ctx, assistantID, chatReq)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to get AI response from RAGFlow: %v", err)
-	}
-
-	// Save assistant message
+	// 保存助手消息
 	assistantMessage := &store.AIMessage{
 		UID:            util.GenUUID(),
 		ConversationID: conversation.ID,
 		Role:           store.AIMessageRoleAssistant,
-		Content:        chatResp.Answer,
-		TokenCount:     0, // RAGFlow 不直接返回 token count
+		Content:        assistantContent,
 	}
 	assistantMessage, err = s.Store.CreateAIMessage(ctx, assistantMessage)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to save assistant message: %v", err)
 	}
 
-	// Fetch existing messages count for title update
+	// 首次对话时自动更新标题
 	messages, _ := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
 		ConversationID: &conversation.ID,
 	})
-
-	// Update conversation title if it's the first exchange
 	if len(messages) <= 2 {
 		title := req.Content
 		if len(title) > 50 {
@@ -317,6 +291,8 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		AssistantMessage: convertMessageToProto(assistantMessage),
 	}, nil
 }
+
+// ==================== 消息查询 ====================
 
 // ListMessages lists all messages in a conversation.
 func (s *APIV1Service) ListMessages(ctx context.Context, req *v1pb.ListMessagesRequest) (*v1pb.ListMessagesResponse, error) {
@@ -357,6 +333,8 @@ func (s *APIV1Service) ListMessages(ctx context.Context, req *v1pb.ListMessagesR
 	}, nil
 }
 
+// ==================== AI 配置查询 ====================
+
 // GetAIConfig returns AI configuration (RAGFlow mode).
 func (s *APIV1Service) GetAIConfig(ctx context.Context, _ *v1pb.GetAIConfigRequest) (*v1pb.GetAIConfigResponse, error) {
 	if s.RAGFlowClient == nil {
@@ -365,12 +343,11 @@ func (s *APIV1Service) GetAIConfig(ctx context.Context, _ *v1pb.GetAIConfigReque
 		}, nil
 	}
 
-	// RAGFlow 模式下，只有一个 provider
 	protoProviders := []*v1pb.AIProvider{
 		{
 			Name:        "ragflow",
 			DisplayName: "RAGFlow",
-			Models:      []string{"default"}, // RAGFlow 内部管理模型
+			Models:      []string{"default"},
 		},
 	}
 
@@ -382,15 +359,13 @@ func (s *APIV1Service) GetAIConfig(ctx context.Context, _ *v1pb.GetAIConfigReque
 	}, nil
 }
 
-// Helper functions
+// ==================== 转换辅助函数 ====================
 
 func convertConversationToProto(c *store.AIConversation, username string) *v1pb.Conversation {
 	return &v1pb.Conversation{
 		Id:         c.UID,
 		User:       fmt.Sprintf("users/%s", username),
 		Title:      c.Title,
-		Model:      c.Model,
-		Provider:   c.Provider,
 		CreateTime: timestamppb.New(time.Unix(c.CreatedTs, 0)),
 		UpdateTime: timestamppb.New(time.Unix(c.UpdatedTs, 0)),
 	}
@@ -403,15 +378,14 @@ func convertMessageToProto(m *store.AIMessage) *v1pb.Message {
 		role = v1pb.MessageRole_USER
 	case store.AIMessageRoleAssistant:
 		role = v1pb.MessageRole_ASSISTANT
-	case store.AIMessageRoleSystem:
-		role = v1pb.MessageRole_SYSTEM
 	}
 
 	return &v1pb.Message{
-		Id:         m.UID,
-		Role:       role,
-		Content:    m.Content,
-		CreateTime: timestamppb.New(time.Unix(m.CreatedTs, 0)),
-		TokenCount: m.TokenCount,
+		Id:               m.UID,
+		Role:             role,
+		Content:          m.Content,
+		ReasoningContent: m.ReasoningContent,
+		ReferencesJson:   m.ReferencesJSON,
+		CreateTime:       timestamppb.New(time.Unix(m.CreatedTs, 0)),
 	}
 }
