@@ -2,7 +2,9 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -11,10 +13,20 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/usememos/memos/internal/util"
+	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
 )
+
+// ==================== 对话历史限制 ====================
+
+// maxHistoryRounds 发送给 RAGFlow 的最大历史轮数（1 轮 = 1 条 user + 1 条 assistant）
+// RAGFlow 内部也会自动截断过长的历史，此限制主要减少网络传输
+const maxHistoryRounds = 10
+
+// maxHistoryMessages 最大加载消息条数（maxHistoryRounds * 2）
+const maxHistoryMessages = maxHistoryRounds * 2
 
 // ==================== 对话管理 ====================
 
@@ -194,23 +206,27 @@ func (s *APIV1Service) UpdateConversation(ctx context.Context, req *v1pb.UpdateC
 	return s.GetConversation(ctx, &v1pb.GetConversationRequest{ConversationId: req.ConversationId})
 }
 
-// ==================== 消息发送（P3 临时实现，待 OpenAI 兼容客户端完成后替换） ====================
+// ==================== 消息发送（P3 OpenAI 兼容 API） ====================
 
-// SendMessage sends a message and gets AI response.
-// TODO(P3): 当前为占位实现，完整版将使用 OpenAI 兼容 API + 流式 SSE
+// SendMessage sends a message and gets AI response via RAGFlow OpenAI Compatible API.
+// 流程: 加载历史 → 构建 messages → 调用 ChatCompletion → 解析引用 → 保存消息
 func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageRequest) (*v1pb.SendMessageResponse, error) {
 	userID := auth.GetUserID(ctx)
 	if userID == 0 {
 		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
 	}
 
-	// 获取 per-user RAGFlow 客户端
+	if req.Content == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "message content cannot be empty")
+	}
+
+	// ① 获取 per-user RAGFlow 客户端
 	userClient := s.getUserRAGFlowClient(ctx, userID)
 	if userClient == nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "AI is not enabled (RAGFlow not provisioned for this user)")
 	}
 
-	// 获取对话
+	// ② 获取对话
 	conversations, err := s.Store.ListAIConversations(ctx, &store.FindAIConversation{
 		UID: &req.ConversationId,
 	})
@@ -226,7 +242,27 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.PermissionDenied, "permission denied")
 	}
 
-	// 保存用户消息
+	// ③ 获取 AssistantID（从 Provisioner 映射表获取）
+	assistantID, err := s.getAssistantID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// ④ 加载对话历史，构建 OpenAI messages 数组
+	orderASC := "ASC"
+	limit := maxHistoryMessages
+	historyMessages, err := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
+		ConversationID: &conversation.ID,
+		OrderByCreated: &orderASC,
+		Limit:          &limit,
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to load conversation history: %v", err)
+	}
+
+	openaiMessages := buildOpenAIMessages(historyMessages, req.Content)
+
+	// ⑤ 保存用户消息
 	userMessage := &store.AIMessage{
 		UID:            util.GenUUID(),
 		ConversationID: conversation.ID,
@@ -238,58 +274,162 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 		return nil, status.Errorf(codes.Internal, "failed to save user message: %v", err)
 	}
 
-	// 获取 AssistantID（从 Provisioner 映射表获取）
-	assistantID := ""
-	mapping, _ := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
-	if mapping != nil {
-		assistantID = mapping.AssistantID
-	}
-	if assistantID == "" {
-		return nil, status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured for this user")
+	// ⑥ 调用 RAGFlow OpenAI 兼容 API（非流式）
+	openaiReq := ragflow.NewOpenAIChatRequest(openaiMessages, false)
+	chatResp, err := userClient.ChatCompletion(ctx, assistantID, openaiReq)
+	if err != nil {
+		slog.Error("RAGFlow OpenAI API 调用失败",
+			slog.Int("userID", int(userID)),
+			slog.String("conversationUID", req.ConversationId),
+			slog.Any("error", err))
+
+		// 保存错误消息，让用户知道发生了什么
+		errMessage := &store.AIMessage{
+			UID:            util.GenUUID(),
+			ConversationID: conversation.ID,
+			Role:           store.AIMessageRoleAssistant,
+			Content:        "Sorry, I'm unable to process your request right now. Please try again later.",
+		}
+		errMessage, _ = s.Store.CreateAIMessage(ctx, errMessage)
+
+		return &v1pb.SendMessageResponse{
+			UserMessage:      convertMessageToProto(userMessage),
+			AssistantMessage: convertMessageToProto(errMessage),
+		}, nil
 	}
 
-	// TODO(P3): 替换为 OpenAI 兼容 API 调用
-	// 当前临时使用 SDK API 的 Retrieve 做简单问答
-	// 完整版将：
-	//   1. 从 DB 加载最近 N 轮历史
-	//   2. 构建 OpenAI messages 数组
-	//   3. 调用 ChatCompletionStream (plugin/ragflow/openai.go)
-	//   4. 流式转发 + 提取引用
-	assistantContent := "AI service is being upgraded to RAGFlow OpenAI compatible API. Please try again later."
+	// ⑦ 提取响应内容和引用
+	assistantContent, referencesJSON, reasoningContent, tokenUsageJSON := extractChatCompletionResult(chatResp)
 
-	// 保存助手消息
+	// ⑧ 保存助手消息
 	assistantMessage := &store.AIMessage{
-		UID:            util.GenUUID(),
-		ConversationID: conversation.ID,
-		Role:           store.AIMessageRoleAssistant,
-		Content:        assistantContent,
+		UID:              util.GenUUID(),
+		ConversationID:   conversation.ID,
+		Role:             store.AIMessageRoleAssistant,
+		Content:          assistantContent,
+		ReasoningContent: reasoningContent,
+		ReferencesJSON:   referencesJSON,
+		TokenUsageJSON:   tokenUsageJSON,
 	}
 	assistantMessage, err = s.Store.CreateAIMessage(ctx, assistantMessage)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to save assistant message: %v", err)
 	}
 
-	// 首次对话时自动更新标题
-	messages, _ := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
-		ConversationID: &conversation.ID,
-	})
-	if len(messages) <= 2 {
-		title := req.Content
-		if len(title) > 50 {
-			title = title[:50] + "..."
-		}
-		now := time.Now().Unix()
-		_ = s.Store.UpdateAIConversation(ctx, &store.UpdateAIConversation{
-			ID:        conversation.ID,
-			Title:     &title,
-			UpdatedTs: &now,
-		})
-	}
+	// ⑨ 首次对话时自动更新标题（取用户消息前 50 字符）
+	s.maybeUpdateConversationTitle(ctx, conversation, req.Content)
 
 	return &v1pb.SendMessageResponse{
 		UserMessage:      convertMessageToProto(userMessage),
 		AssistantMessage: convertMessageToProto(assistantMessage),
 	}, nil
+}
+
+// ==================== SendMessage 辅助函数 ====================
+
+// getAssistantID 获取用户的 RAGFlow Chat Assistant ID
+func (s *APIV1Service) getAssistantID(ctx context.Context, userID int32) (string, error) {
+	mapping, err := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
+	if err != nil {
+		return "", status.Errorf(codes.Internal, "failed to get RAGFlow user mapping: %v", err)
+	}
+	if mapping == nil || mapping.AssistantID == "" {
+		return "", status.Errorf(codes.FailedPrecondition, "RAGFlow assistant not configured for this user")
+	}
+	return mapping.AssistantID, nil
+}
+
+// buildOpenAIMessages 从历史消息和新消息构建 OpenAI messages 数组
+// 规则：
+//   - 不发送 system 消息（RAGFlow Chat Assistant 自带 prompt 配置）
+//   - 按时间顺序排列历史 user/assistant 消息
+//   - 最后追加本次用户消息
+//   - 如果历史超过 maxHistoryMessages，只取最近的 N 条
+func buildOpenAIMessages(history []*store.AIMessage, newContent string) []ragflow.OpenAIMessage {
+	// 预分配: 历史消息 + 新消息
+	messages := make([]ragflow.OpenAIMessage, 0, len(history)+1)
+
+	// 如果历史消息过多，只取最近的 maxHistoryMessages 条
+	start := 0
+	if len(history) > maxHistoryMessages {
+		start = len(history) - maxHistoryMessages
+	}
+
+	for _, msg := range history[start:] {
+		role := "user"
+		if msg.Role == store.AIMessageRoleAssistant {
+			role = "assistant"
+		}
+		messages = append(messages, ragflow.OpenAIMessage{
+			Role:    role,
+			Content: msg.Content,
+		})
+	}
+
+	// 追加本次用户消息
+	messages = append(messages, ragflow.OpenAIMessage{
+		Role:    "user",
+		Content: newContent,
+	})
+
+	return messages
+}
+
+// extractChatCompletionResult 从非流式 ChatCompletion 响应中提取内容、引用、思考链、Token 使用
+func extractChatCompletionResult(resp *ragflow.OpenAIChatResponse) (content, referencesJSON, reasoningContent, tokenUsageJSON string) {
+	if resp == nil || len(resp.Choices) == 0 {
+		return "", "", "", ""
+	}
+
+	choice := resp.Choices[0]
+	if choice.Message == nil {
+		return "", "", "", ""
+	}
+
+	content = choice.Message.Content
+
+	// 解析引用信息 → ParsedReference JSON
+	if len(choice.Message.Reference) > 0 {
+		parsed := ragflow.ParseReferences(choice.Message.Reference)
+		if jsonBytes, err := json.Marshal(parsed); err == nil {
+			referencesJSON = string(jsonBytes)
+		}
+	}
+
+	// Token 使用统计
+	if resp.Usage != nil {
+		if jsonBytes, err := json.Marshal(resp.Usage); err == nil {
+			tokenUsageJSON = string(jsonBytes)
+		}
+	}
+
+	// 非流式响应中 reasoning_content 不在标准 OpenAI 格式中
+	// 如果后续 RAGFlow 扩展支持，可在此处提取
+
+	return content, referencesJSON, reasoningContent, tokenUsageJSON
+}
+
+// maybeUpdateConversationTitle 首次对话时自动设置对话标题
+func (s *APIV1Service) maybeUpdateConversationTitle(ctx context.Context, conversation *store.AIConversation, userContent string) {
+	messages, _ := s.Store.ListAIMessages(ctx, &store.FindAIMessage{
+		ConversationID: &conversation.ID,
+	})
+	// 只在第一轮对话（2 条消息：user + assistant）时自动设置标题
+	if len(messages) > 2 {
+		return
+	}
+
+	title := userContent
+	runes := []rune(title)
+	if len(runes) > 50 {
+		title = string(runes[:50]) + "..."
+	}
+	now := time.Now().Unix()
+	_ = s.Store.UpdateAIConversation(ctx, &store.UpdateAIConversation{
+		ID:        conversation.ID,
+		Title:     &title,
+		UpdatedTs: &now,
+	})
 }
 
 // ==================== 消息查询 ====================

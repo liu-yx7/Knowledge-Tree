@@ -1,5 +1,4 @@
 package ragflow
-package ragflow
 
 import (
 	"context"
