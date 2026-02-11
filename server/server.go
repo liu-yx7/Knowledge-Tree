@@ -88,6 +88,9 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 
 	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, ragflowProvisioner, s.ragflowSyncRunner)
 
+	// Register SSE streaming endpoint for AI chat (native HTTP, bypasses gRPC).
+	apiV1Service.RegisterStreamRoutes(echoServer)
+
 	// Register HTTP file server routes BEFORE gRPC-Gateway to ensure proper range request handling for Safari.
 	// This uses native HTTP serving (http.ServeContent) instead of gRPC for video/audio files.
 	fileServerService := fileserver.NewFileServerService(s.Profile, s.Store, s.Secret)

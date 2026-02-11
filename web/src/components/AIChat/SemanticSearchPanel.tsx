@@ -1,16 +1,26 @@
-// filepath: /Users/yuxuanli/Desktop/Project/Knowtree/Knowledge-Tree/web/src/components/AIChat/SemanticSearchPanel.tsx
 import { useState } from "react";
 import { Search, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useSemanticSearch, type Reference } from "@/hooks/useRAGFlowQueries";
-import ReferenceList from "./ReferenceList";
+import ReferenceList, { type ReferenceItem } from "./ReferenceList";
 
 interface SemanticSearchPanelProps {
   className?: string;
   onClose?: () => void;
   compact?: boolean;
+}
+
+/** 语义搜索 Reference → 通用 ReferenceItem 转换 */
+function toReferenceItem(ref: Reference): ReferenceItem {
+  return {
+    memoUid: ref.memoUid,
+    type: "memo",
+    title: ref.title,
+    contentSnippet: ref.contentSnippet,
+    similarity: ref.similarityScore,
+  };
 }
 
 /**
@@ -128,7 +138,7 @@ const SemanticSearchPanel = ({ className, onClose, compact = false }: SemanticSe
           </div>
         ) : hasSearched ? (
           results.length > 0 ? (
-            <ReferenceList references={results} compact={compact} className="border-t-0 mt-0 pt-0" />
+            <ReferenceList references={results.map(toReferenceItem)} compact={compact} className="border-t-0 mt-0 pt-0" />
           ) : (
             <div className={cn(
               "text-center text-muted-foreground py-8",

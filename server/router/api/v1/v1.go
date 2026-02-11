@@ -140,6 +140,12 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	gwGroup.Use(middleware.CORS())
 	handler := echo.WrapHandler(gwMux)
 
+	// Register SSE streaming route BEFORE the wildcard /api/v1/* to prevent
+	// gRPC-Gateway from intercepting it. Echo matches more specific routes first
+	// only within the same group; the wildcard Any("/api/v1/*") would otherwise
+	// swallow this path and return gRPC 404.
+	gwGroup.POST("/api/v1/ai/conversations/:conversationId/messages/stream", s.handleStreamMessage)
+
 	gwGroup.Any("/api/v1/*", handler)
 	gwGroup.Any("/file/*", handler)
 

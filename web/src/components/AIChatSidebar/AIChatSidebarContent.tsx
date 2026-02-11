@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { create } from "@bufbuild/protobuf";
 import { ExternalLink, MessageSquarePlus, Minus } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -6,22 +7,31 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAISidebar } from "@/contexts/AISidebarContext";
-import { useConversation, useConversations, useCreateConversation, useSendMessage } from "@/hooks/useAIQueries";
-import { CreateConversationRequestSchema, SendMessageRequestSchema } from "@/types/proto/api/v1/ai_service_pb";
+import { useConversation, useConversations, useCreateConversation, useMessages } from "@/hooks/useAIQueries";
+import { useAIChatStream } from "@/hooks/useAIChatStream";
+import { CreateConversationRequestSchema } from "@/types/proto/api/v1/ai_service_pb";
 
 const AIChatSidebarContent = () => {
   const { activeConversationId, setActiveConversation, closeSidebar } = useAISidebar();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations = [] } = useConversations();
-  const { data: conversation, isLoading: conversationLoading } = useConversation(activeConversationId || "");
+  const { isLoading: conversationLoading } = useConversation(activeConversationId || "");
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(activeConversationId || "");
   const createConversation = useCreateConversation();
-  const sendMessage = useSendMessage();
+  const stream = useAIChatStream();
+
+  // 自动滚动到底部
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, stream.streamingContent, stream.isStreaming]);
 
   const handleNewChat = async () => {
     try {
-      const newConversation = await createConversation.mutateAsync(
-        create(CreateConversationRequestSchema, {})
-      );
+      stream.reset();
+      const newConversation = await createConversation.mutateAsync(create(CreateConversationRequestSchema, {}));
       setActiveConversation(newConversation.id);
     } catch (error) {
       console.error("Failed to create conversation:", error);
@@ -31,13 +41,11 @@ const AIChatSidebarContent = () => {
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return;
 
-    // Create conversation if none selected
+    // 自动创建对话
     let conversationId = activeConversationId;
     if (!conversationId) {
       try {
-        const newConversation = await createConversation.mutateAsync(
-          create(CreateConversationRequestSchema, {})
-        );
+        const newConversation = await createConversation.mutateAsync(create(CreateConversationRequestSchema, {}));
         conversationId = newConversation.id;
         setActiveConversation(conversationId);
       } catch (error) {
@@ -46,16 +54,8 @@ const AIChatSidebarContent = () => {
       }
     }
 
-    try {
-      await sendMessage.mutateAsync(
-        create(SendMessageRequestSchema, {
-          conversationId,
-          content,
-        })
-      );
-    } catch (error) {
-      console.error("Failed to send message:", error);
-    }
+    // 使用 SSE 流式发送
+    stream.sendStreamMessage(conversationId, content);
   };
 
   return (
@@ -82,10 +82,7 @@ const AIChatSidebarContent = () => {
             <MessageSquarePlus className="h-4 w-4" />
           </Button>
           {conversations.length > 0 && (
-            <Select
-              value={activeConversationId || ""}
-              onValueChange={setActiveConversation}
-            >
+            <Select value={activeConversationId || ""} onValueChange={setActiveConversation}>
               <SelectTrigger className="h-7 w-28 text-xs">
                 <SelectValue placeholder="Select chat" />
               </SelectTrigger>
@@ -98,42 +95,43 @@ const AIChatSidebarContent = () => {
               </SelectContent>
             </Select>
           )}
-          {/* Minimize button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={closeSidebar}
-            title="Minimize"
-          >
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={closeSidebar} title="Minimize">
             <Minus className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1" ref={scrollRef}>
         {!activeConversationId ? (
-          <AIChatEmptyState 
-            onNewChat={handleNewChat} 
-            compact 
-            isLoading={createConversation.isPending}
-          />
+          <AIChatEmptyState onNewChat={handleNewChat} compact isLoading={createConversation.isPending} />
         ) : (
           <AIChatMessages
-            messages={conversation?.messages || []}
-            isLoading={conversationLoading}
-            isSending={sendMessage.isPending}
+            messages={messages}
+            isLoading={conversationLoading || messagesLoading}
+            isStreaming={stream.isStreaming}
+            streamingContent={stream.streamingContent}
+            streamingReasoning={stream.reasoningContent}
+            streamingReferences={stream.references}
             compact
           />
         )}
       </ScrollArea>
 
+      {/* Error */}
+      {stream.error && (
+        <div className="px-3 py-2 text-xs text-destructive bg-destructive/10 border-t">
+          {stream.error}
+        </div>
+      )}
+
       {/* Input */}
       <div className="shrink-0 border-t">
         <AIChatInput
           onSend={handleSendMessage}
-          disabled={sendMessage.isPending || createConversation.isPending}
+          onAbort={stream.abort}
+          disabled={createConversation.isPending}
+          isStreaming={stream.isStreaming}
           compact
         />
       </div>
