@@ -243,7 +243,7 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 	}
 
 	// ③ 获取 AssistantID（从 Provisioner 映射表获取）
-	assistantID, err := s.getAssistantID(ctx, userID)
+	assistantID, err := s.ensureAssistantID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -327,8 +327,30 @@ func (s *APIV1Service) SendMessage(ctx context.Context, req *v1pb.SendMessageReq
 
 // ==================== SendMessage 辅助函数 ====================
 
-// getAssistantID 获取用户的 RAGFlow Chat Assistant ID
-func (s *APIV1Service) getAssistantID(ctx context.Context, userID int32) (string, error) {
+// ensureAssistantID 确保用户的 RAGFlow Chat Assistant 就绪并返回 AssistantID
+// 优先通过 Provisioner 触发完整资源配置（认证 + Dataset + Assistant），
+// 避免 getUserRAGFlowClient 只配置认证而 AssistantID 仍为空的"半初始化"问题。
+// 降级路径：被动查询 ragflow_user_mapping 表。
+func (s *APIV1Service) ensureAssistantID(ctx context.Context, userID int32) (string, error) {
+	// 优先路径：通过 Provisioner 确保全部资源就绪（认证 + Dataset + Assistant）
+	if s.RAGFlowProvisioner != nil {
+		user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
+		if err != nil || user == nil {
+			return "", status.Errorf(codes.Internal, "failed to get user info: %v", err)
+		}
+
+		// EnsureUserResources 会依次调用:
+		// GetClientForUser（认证） → ensureDataset → ensureAssistant
+		// 确保 AssistantID 被写入 mapping 表
+		if _, _, err := s.RAGFlowProvisioner.EnsureUserResources(ctx, userID, user.Username); err != nil {
+			slog.Warn("ensureAssistantID: Provisioner 资源配置失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			// 降级到被动查询
+		}
+	}
+
+	// 从 mapping 表读取 AssistantID
 	mapping, err := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
 	if err != nil {
 		return "", status.Errorf(codes.Internal, "failed to get RAGFlow user mapping: %v", err)

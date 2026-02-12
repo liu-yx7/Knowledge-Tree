@@ -28,6 +28,33 @@ func (c *Client) CreateChatAssistant(ctx context.Context, name string, datasetID
 	return decodeResponse[ChatAssistant](resp)
 }
 
+// UpdateChatAssistant 更新聊天助手配置
+// RAGFlow API: PUT /api/v1/chats/{chat_id}
+// 主要用于将有内容的 Dataset 关联到已创建的 Assistant
+func (c *Client) UpdateChatAssistant(ctx context.Context, chatID string, update map[string]any) error {
+	path := fmt.Sprintf("/api/v1/chats/%s", chatID)
+
+	resp, err := c.request(ctx, http.MethodPut, path, update)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// PUT 成功返回 code=0，无需解析 data
+	var result struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+	if result.Code != 0 {
+		return fmt.Errorf("RAGFlow 错误 (code=%d): %s", result.Code, result.Message)
+	}
+
+	return nil
+}
+
 // ListChatAssistants 列出聊天助手
 // RAGFlow API: GET /api/v1/chats
 func (c *Client) ListChatAssistants(ctx context.Context, opts *ListOptions) ([]ChatAssistant, error) {
@@ -249,22 +276,25 @@ func (c *Client) ChatStream(ctx context.Context, chatID string, req *ChatRequest
 // ==================== 内部类型 ====================
 
 // ChatAssistant 聊天助手信息
+// 注意：RAGFlow 的 create_time/update_time 是毫秒级 Unix 时间戳（BigIntegerField），
+// API 返回 JSON number，非字符串。
 type ChatAssistant struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
 	DatasetIDs []string `json:"dataset_ids"`
 	LLMModel   string   `json:"llm_model"`
-	CreateTime string   `json:"create_time"`
-	UpdateTime string   `json:"update_time"`
+	CreateTime int64    `json:"create_time"`
+	UpdateTime int64    `json:"update_time"`
 }
 
 // Session 会话信息
+// 注意：时间字段同样是毫秒级 Unix 时间戳。
 type Session struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	ChatID     string `json:"chat_id"`
-	CreateTime string `json:"create_time"`
-	UpdateTime string `json:"update_time"`
+	CreateTime int64  `json:"create_time"`
+	UpdateTime int64  `json:"update_time"`
 }
 
 // streamResponse SSE 流响应结构

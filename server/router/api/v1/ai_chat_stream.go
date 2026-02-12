@@ -110,11 +110,10 @@ func (s *APIV1Service) handleStreamMessage(c echo.Context) error {
 	}
 
 	// ==================== 获取 AssistantID ====================
-	mapping, err := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{UserID: &userID})
-	if err != nil || mapping == nil || mapping.AssistantID == "" {
+	assistantID, err := s.ensureAssistantID(ctx, userID)
+	if err != nil {
 		return echo.NewHTTPError(http.StatusServiceUnavailable, "RAGFlow assistant not configured")
 	}
-	assistantID := mapping.AssistantID
 
 	// ==================== 加载历史 + 构建 messages ====================
 	orderASC := "ASC"

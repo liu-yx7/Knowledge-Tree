@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,6 +140,16 @@ func (p *Provisioner) EnsureUserResources(ctx context.Context, memosUserID int32
 		return nil, "", fmt.Errorf("确保用户 Dataset 失败: %w", err)
 	}
 
+	// 3. 确保 Assistant 存在（独立检查，覆盖 ensureDataset 走快速路径的情况）
+	// 当 DatasetID 已存在但 AssistantID 为空（半初始化状态），ensureDataset 不会触发
+	// ensureAssistant，需在此处独立补偿。
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err == nil && mapping != nil && mapping.AssistantID == "" {
+		p.ensureAssistant(ctx, client, memosUserID, mapping.ID, datasetID)
+	}
+
 	return client, datasetID, nil
 }
 
@@ -233,6 +244,11 @@ func (p *Provisioner) ensureDataset(ctx context.Context, client *Client, memosUs
 }
 
 // ensureAssistant 确保用户有对应的 Chat Assistant（最佳努力，失败不阻塞）
+// 注意：创建时传空 dataset_ids，绕过 RAGFlow 对空 Dataset 的 chunk_num==0 校验。
+// Dataset 关联将在内容同步完成后通过 UpdateChatAssistant 完成。
+//
+// 降级策略：如果创建失败且错误包含 "Duplicated"（说明之前已创建但 ID 未保存），
+// 则通过 ListChatAssistants 按名称查询已有 Assistant 并保存其 ID。
 func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memosUserID int32, mappingID int32, datasetID string) {
 	// 查询当前映射确认是否已有 AssistantID
 	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
@@ -247,8 +263,20 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 	}
 
 	assistantName := fmt.Sprintf("knowtree_assistant_%d", memosUserID)
-	assistant, err := client.CreateChatAssistant(ctx, assistantName, []string{datasetID})
+
+	// 尝试创建 Assistant（传空 dataset_ids 绕过空 Dataset 校验）
+	assistant, err := client.CreateChatAssistant(ctx, assistantName, []string{})
 	if err != nil {
+		// 降级路径：如果是"重复名称"错误，说明 Assistant 已在 RAGFlow 中创建，
+		// 但上次反序列化失败导致 ID 未保存。通过名称查询恢复。
+		if strings.Contains(err.Error(), "Duplicat") {
+			slog.Info("Chat Assistant 已存在（名称重复），尝试按名称查询恢复",
+				slog.Int("userID", int(memosUserID)),
+				slog.String("assistantName", assistantName))
+			p.recoverAssistantByName(ctx, client, memosUserID, mappingID, assistantName)
+			return
+		}
+
 		slog.Warn("创建 Chat Assistant 失败（非阻塞）",
 			slog.Int("userID", int(memosUserID)),
 			slog.Any("error", err))
@@ -260,10 +288,46 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 		slog.String("assistantID", assistant.ID))
 
 	// 更新映射
+	p.saveAssistantID(ctx, memosUserID, mappingID, assistant.ID)
+}
+
+// recoverAssistantByName 通过名称查询已有 Assistant 并保存其 ID
+// 用于恢复"创建成功但反序列化失败"导致的半初始化状态
+func (p *Provisioner) recoverAssistantByName(ctx context.Context, client *Client, memosUserID int32, mappingID int32, assistantName string) {
+	assistants, err := client.ListChatAssistants(ctx, &ListOptions{
+		Page:     1,
+		PageSize: 10,
+		Name:     assistantName,
+	})
+	if err != nil {
+		slog.Warn("按名称查询 Chat Assistant 失败",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		return
+	}
+
+	// 精确匹配名称
+	for _, a := range assistants {
+		if a.Name == assistantName {
+			slog.Info("通过名称查询恢复了 Chat Assistant",
+				slog.Int("userID", int(memosUserID)),
+				slog.String("assistantID", a.ID))
+			p.saveAssistantID(ctx, memosUserID, mappingID, a.ID)
+			return
+		}
+	}
+
+	slog.Warn("按名称查询未找到匹配的 Chat Assistant",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("assistantName", assistantName))
+}
+
+// saveAssistantID 将 AssistantID 写入映射表
+func (p *Provisioner) saveAssistantID(ctx context.Context, memosUserID int32, mappingID int32, assistantID string) {
 	now := time.Now().Unix()
 	if err := p.store.UpdateRAGFlowUserMapping(ctx, &store.UpdateRAGFlowUserMapping{
 		ID:          mappingID,
-		AssistantID: &assistant.ID,
+		AssistantID: &assistantID,
 		UpdatedTs:   &now,
 	}); err != nil {
 		slog.Error("更新用户映射的 AssistantID 失败",
