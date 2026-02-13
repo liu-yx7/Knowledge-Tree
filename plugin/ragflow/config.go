@@ -19,6 +19,11 @@ type Config struct {
 	// AssistantID 默认助手 ID（用于聊天功能）
 	AssistantID string
 
+	// DefaultLLMID 创建 Chat Assistant 时使用的默认 LLM 模型
+	// 格式：{model_name}@{provider}，例如 "deepseek-chat@DeepSeek"
+	// 必须是 RAGFlow 中已配置的模型，否则创建 Assistant 会失败
+	DefaultLLMID string
+
 	// Timeout 请求超时时间
 	Timeout time.Duration
 

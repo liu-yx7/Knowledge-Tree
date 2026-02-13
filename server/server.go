@@ -257,8 +257,16 @@ func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
 		return nil
 	}
 
+	// 读取默认 LLM 模型配置（创建 Chat Assistant 必须）
+	defaultLLMID := os.Getenv("RAGFLOW_DEFAULT_LLM_ID")
+	if defaultLLMID == "" {
+		slog.Warn("RAGFLOW_DEFAULT_LLM_ID not configured, AI chat will not work",
+			slog.String("hint", "Set RAGFLOW_DEFAULT_LLM_ID to a valid model, e.g., deepseek-chat@DeepSeek"))
+	}
+
 	cfg := &ragflow.Config{
-		BaseURL: baseURL,
+		BaseURL:      baseURL,
+		DefaultLLMID: defaultLLMID,
 	}
 	cfg.WithDefaults()
 

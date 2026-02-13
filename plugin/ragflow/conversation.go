@@ -12,12 +12,27 @@ import (
 
 // ==================== 聊天助手管理 ====================
 
+// CreateChatAssistantRequest 创建聊天助手的请求参数
+type CreateChatAssistantRequest struct {
+	Name       string   // 助手名称
+	DatasetIDs []string // 关联的 Dataset ID 列表
+	LLMID      string   // LLM 模型标识，格式：{model_name}@{provider}，例如 "deepseek-chat@DeepSeek"
+}
+
 // CreateChatAssistant 创建聊天助手
 // RAGFlow API: POST /api/v1/chats
-func (c *Client) CreateChatAssistant(ctx context.Context, name string, datasetIDs []string) (*ChatAssistant, error) {
+// 注意：必须指定 llm_id（通过 llm.model_name 字段），否则 Assistant 无法进行对话
+func (c *Client) CreateChatAssistant(ctx context.Context, req *CreateChatAssistantRequest) (*ChatAssistant, error) {
 	payload := map[string]any{
-		"name":        name,
-		"dataset_ids": datasetIDs,
+		"name":        req.Name,
+		"dataset_ids": req.DatasetIDs,
+	}
+
+	// 设置 LLM 模型配置（必须，否则对话时报 "Model(@None) not authorized"）
+	if req.LLMID != "" {
+		payload["llm"] = map[string]any{
+			"model_name": req.LLMID,
+		}
 	}
 
 	resp, err := c.request(ctx, http.MethodPost, "/api/v1/chats", payload)

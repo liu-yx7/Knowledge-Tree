@@ -264,8 +264,20 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 
 	assistantName := fmt.Sprintf("knowtree_assistant_%d", memosUserID)
 
-	// 尝试创建 Assistant（传空 dataset_ids 绕过空 Dataset 校验）
-	assistant, err := client.CreateChatAssistant(ctx, assistantName, []string{})
+	// 检查是否配置了默认 LLM 模型
+	if p.config.DefaultLLMID == "" {
+		slog.Warn("未配置 DefaultLLMID，无法创建 Chat Assistant（对话功能将不可用）",
+			slog.Int("userID", int(memosUserID)),
+			slog.String("hint", "请设置环境变量 RAGFLOW_DEFAULT_LLM_ID，格式如 deepseek-chat@DeepSeek"))
+		return
+	}
+
+	// 尝试创建 Assistant（传空 dataset_ids 绕过空 Dataset 校验，必须传 llm_id）
+	assistant, err := client.CreateChatAssistant(ctx, &CreateChatAssistantRequest{
+		Name:       assistantName,
+		DatasetIDs: []string{},
+		LLMID:      p.config.DefaultLLMID,
+	})
 	if err != nil {
 		// 降级路径：如果是"重复名称"错误，说明 Assistant 已在 RAGFlow 中创建，
 		// 但上次反序列化失败导致 ID 未保存。通过名称查询恢复。
@@ -279,13 +291,15 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 
 		slog.Warn("创建 Chat Assistant 失败（非阻塞）",
 			slog.Int("userID", int(memosUserID)),
+			slog.String("llmID", p.config.DefaultLLMID),
 			slog.Any("error", err))
 		return
 	}
 
 	slog.Info("为用户创建了 Chat Assistant",
 		slog.Int("userID", int(memosUserID)),
-		slog.String("assistantID", assistant.ID))
+		slog.String("assistantID", assistant.ID),
+		slog.String("llmID", p.config.DefaultLLMID))
 
 	// 更新映射
 	p.saveAssistantID(ctx, memosUserID, mappingID, assistant.ID)
