@@ -549,6 +549,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /api/v1/chat/datasets:
+        get:
+            tags:
+                - ChatSettingsService
+            description: ListDatasets 获取用户可用的 Dataset 列表
+            operationId: ChatSettingsService_ListDatasets
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDatasetsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/chat/settings:
+        get:
+            tags:
+                - ChatSettingsService
+            description: GetChatSettings 获取用户的聊天设置
+            operationId: ChatSettingsService_GetChatSettings
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ChatSettings'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - ChatSettingsService
+            description: |-
+                UpdateChatSettings 更新用户的聊天设置
+                 会同步更新 RAGFlow Assistant 的 Dataset 配置
+            operationId: ChatSettingsService_UpdateChatSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateChatSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ChatSettings'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /api/v1/identity-providers:
         get:
             tags:
@@ -763,6 +827,72 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/InstanceSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/llm/models:
+        get:
+            tags:
+                - LLMService
+            description: |-
+                ListAvailableModels 获取可用的 LLM 模型列表
+                 从 DashScope API 动态获取，带缓存（5 分钟 TTL）
+            operationId: LLMService_ListAvailableModels
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAvailableModelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/llm/preference:
+        get:
+            tags:
+                - LLMService
+            description: GetUserLLMPreference 获取用户的 LLM 偏好设置
+            operationId: LLMService_GetUserLLMPreference
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserLLMPreference'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - LLMService
+            description: |-
+                SetUserLLMPreference 设置用户的 LLM 偏好
+                 会同步更新 RAGFlow Assistant 的 LLM 配置
+            operationId: LLMService_SetUserLLMPreference
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetUserLLMPreferenceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserLLMPreference'
                 default:
                     description: Default error response
                     content:
@@ -2491,6 +2621,25 @@ components:
                     description: |-
                         Optional. The related memo. Refer to `Memo.name`.
                          Format: memos/{memo}
+        ChatSettings:
+            type: object
+            properties:
+                datasetIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 当前选择的 Dataset ID 列表
+                quoteEnabled:
+                    type: boolean
+                    description: RAG 引用开关状态（默认 true）
+                reasoningEnabled:
+                    type: boolean
+                    description: 深度研究（Reasoning）开关状态（默认 false）
+                availableDatasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Dataset'
+                    description: 可用的 Dataset 列表（方便前端渲染）
         ContentSyncState:
             type: object
             properties:
@@ -2583,6 +2732,26 @@ components:
                     description: |-
                         The actual token value - only returned on creation.
                          This is the only time the token value will be visible.
+        Dataset:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Dataset ID
+                name:
+                    type: string
+                    description: Dataset 名称
+                description:
+                    type: string
+                    description: Dataset 描述
+                documentCount:
+                    type: integer
+                    description: 文档数量
+                    format: int32
+                isDefault:
+                    type: boolean
+                    description: 是否为当前用户的默认 Dataset
+            description: Dataset 表示一个知识库
         FieldMapping:
             type: object
             properties:
@@ -2784,6 +2953,30 @@ components:
                         - $ref: '#/components/schemas/StorageSetting_S3Config'
                     description: The S3 config.
             description: Storage configuration settings for instance attachments.
+        LLMModel:
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: |-
+                        模型 ID，格式：{model_name}@{provider}
+                         例如：qwen-plus@Tongyi-Qianwen
+                modelName:
+                    type: string
+                    description: 模型名称（用于 API 调用）
+                displayName:
+                    type: string
+                    description: 显示名称（用于前端展示）
+                provider:
+                    type: string
+                    description: 模型提供商
+                description:
+                    type: string
+                    description: 模型描述
+                status:
+                    type: string
+                    description: 模型状态：RUNNING, STOPPED 等
+            description: LLMModel 表示一个可用的 LLM 模型
         ListActivitiesResponse:
             type: object
             properties:
@@ -2823,6 +3016,14 @@ components:
                     type: integer
                     description: The total count of attachments (may be approximate).
                     format: int32
+        ListAvailableModelsResponse:
+            type: object
+            properties:
+                models:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LLMModel'
+                    description: 可用的 LLM 模型列表
         ListContentSyncStatesResponse:
             type: object
             properties:
@@ -2843,6 +3044,14 @@ components:
                         $ref: '#/components/schemas/Conversation'
                 nextPageToken:
                     type: string
+        ListDatasetsResponse:
+            type: object
+            properties:
+                datasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Dataset'
+                    description: 用户可用的 Dataset 列表
         ListIdentityProvidersResponse:
             type: object
             properties:
@@ -3386,6 +3595,14 @@ components:
                     items:
                         $ref: '#/components/schemas/MemoRelation'
                     description: Required. The relations to set for the memo.
+        SetUserLLMPreferenceRequest:
+            required:
+                - modelId
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: 用户选择的模型 ID，格式：{model_name}@{provider}
         Shortcut:
             required:
                 - title
@@ -3567,6 +3784,20 @@ components:
                     description: |-
                         Required. The resource name of the user to unsubscribe from.
                          Format: users/{user}
+        UpdateChatSettingsRequest:
+            type: object
+            properties:
+                datasetIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 选择的 Dataset ID 列表（可选，不传则不更新）
+                quoteEnabled:
+                    type: boolean
+                    description: RAG 引用开关（可选，不传则不更新）
+                reasoningEnabled:
+                    type: boolean
+                    description: 深度研究（Reasoning）开关（可选，不传则不更新）
         UpdateConversationRequest:
             required:
                 - conversationId
@@ -3648,6 +3879,21 @@ components:
                     type: string
                     description: Output only. The last update timestamp.
                     format: date-time
+        UserLLMPreference:
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: 当前选择的模型 ID
+                modelName:
+                    type: string
+                    description: 当前选择的模型名称
+                provider:
+                    type: string
+                    description: 当前选择的模型提供商
+                llmConfigured:
+                    type: boolean
+                    description: LLM 是否已配置（RAGFlow 是否已配置百炼 API Key）
         UserNotification:
             type: object
             properties:
@@ -3842,8 +4088,16 @@ tags:
     - name: ActivityService
     - name: AttachmentService
     - name: AuthService
+    - name: ChatSettingsService
+      description: |-
+        ChatSettingsService 提供 AI 聊天设置管理功能
+         用于管理用户的 Dataset 选择和对话选项
     - name: IdentityProviderService
     - name: InstanceService
+    - name: LLMService
+      description: |-
+        LLMService 提供 LLM 模型管理功能
+         用于获取可用模型列表和管理用户的模型偏好设置
     - name: MemoService
     - name: RAGFlowService
       description: RAGFlowService 提供 RAGFlow 同步状态查询和管理功能

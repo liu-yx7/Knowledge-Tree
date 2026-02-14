@@ -250,13 +250,15 @@ func TestSemanticSearch_InvalidArgument_EmptyQuery(t *testing.T) {
 	ts.Service.RAGFlowClient = nil
 	ts.Service.RAGFlowProvisioner = nil
 
-	// RAGFlow 未配置时，即使 query 为空也是先返回空结果（RAGFlow 未配置优先级更高）
-	resp, err := ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
+	// 空 query 时应返回 InvalidArgument 错误（参数校验在 RAGFlow 配置检查之前）
+	_, err = ts.Service.SemanticSearch(userCtx, &v1pb.SemanticSearchRequest{
 		Query: "",
 	})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	assert.Empty(t, resp.Results, "RAGFlow 未配置时应返回空结果")
+	require.Error(t, err)
+
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code(), "空 query 应返回 InvalidArgument")
 }
 
 // ==================== ListContentSyncStates 测试 ====================

@@ -168,6 +168,8 @@ CREATE TABLE `ragflow_user_mapping` (
   `llm_configured` TINYINT(1) NOT NULL DEFAULT 0,
   `preferred_llm_id` VARCHAR(255) NOT NULL DEFAULT '',
   `dataset_ids` TEXT NOT NULL,
+  `quote_enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `reasoning_enabled` TINYINT(1) NOT NULL DEFAULT 0,
   `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
   FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,

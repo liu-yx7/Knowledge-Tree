@@ -170,6 +170,8 @@ CREATE TABLE ragflow_user_mapping (
   llm_configured INTEGER NOT NULL DEFAULT 0,
   preferred_llm_id TEXT NOT NULL DEFAULT '',
   dataset_ids TEXT NOT NULL DEFAULT '[]',
+  quote_enabled INTEGER NOT NULL DEFAULT 1,
+  reasoning_enabled INTEGER NOT NULL DEFAULT 0,
   created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE

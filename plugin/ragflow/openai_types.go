@@ -23,8 +23,11 @@ type OpenAIMessage struct {
 
 // OpenAIExtraBody RAGFlow 扩展字段（通过 extra_body 传递）
 type OpenAIExtraBody struct {
-	// Reference 是否返回引用信息
+	// Reference 是否返回引用信息（对应 quote 功能）
 	Reference bool `json:"reference,omitempty"`
+	// Reasoning 是否启用深度研究/思考链（DeepSeek R1 等模型支持）
+	// 启用后会在流式响应中返回 reasoning_content 字段
+	Reasoning bool `json:"reasoning,omitempty"`
 	// MetadataCondition 元数据过滤条件（用于 visibility 过滤等）
 	MetadataCondition *MetadataCondition `json:"metadata_condition,omitempty"`
 }

@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/usememos/memos/internal/profile"
+	"github.com/usememos/memos/plugin/dashscope"
 	"github.com/usememos/memos/plugin/markdown"
 	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
@@ -31,6 +32,8 @@ type APIV1Service struct {
 	v1pb.UnimplementedIdentityProviderServiceServer
 	v1pb.UnimplementedAIServiceServer
 	v1pb.UnimplementedRAGFlowServiceServer
+	v1pb.UnimplementedLLMServiceServer
+	v1pb.UnimplementedChatSettingsServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
@@ -43,6 +46,9 @@ type APIV1Service struct {
 
 	// RAGFlow 同步 Runner - 用于触发同步事件
 	RAGFlowSyncRunner *ragflowsync.Runner
+
+	// DashScope 客户端 - 用于获取可用 LLM 模型列表
+	DashScopeClient *dashscope.Client
 
 	// thumbnailSemaphore limits concurrent thumbnail generation to prevent memory exhaustion
 	thumbnailSemaphore *semaphore.Weighted
@@ -134,6 +140,12 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 		return err
 	}
 	if err := v1pb.RegisterAIServiceHandlerServer(ctx, gwMux, s); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterLLMServiceHandlerServer(ctx, gwMux, s); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterChatSettingsServiceHandlerServer(ctx, gwMux, s); err != nil {
 		return err
 	}
 	gwGroup := echoServer.Group("")

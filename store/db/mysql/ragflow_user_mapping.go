@@ -9,9 +9,9 @@ import (
 )
 
 func (d *DB) CreateRAGFlowUserMapping(ctx context.Context, create *store.RAGFlowUserMapping) (*store.RAGFlowUserMapping, error) {
-	fields := []string{"`user_id`", "`dataset_id`", "`dataset_name`", "`assistant_id`", "`document_count`", "`ragflow_user_id`", "`ragflow_email`", "`ragflow_password`", "`api_key`", "`llm_configured`", "`preferred_llm_id`", "`dataset_ids`"}
-	placeholder := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
-	args := []any{create.UserID, create.DatasetID, create.DatasetName, create.AssistantID, create.DocumentCount, create.RAGFlowUserID, create.RAGFlowEmail, create.RAGFlowPassword, create.APIKey, create.LLMConfigured, create.PreferredLLMID, create.DatasetIDs}
+	fields := []string{"`user_id`", "`dataset_id`", "`dataset_name`", "`assistant_id`", "`document_count`", "`ragflow_user_id`", "`ragflow_email`", "`ragflow_password`", "`api_key`", "`llm_configured`", "`preferred_llm_id`", "`dataset_ids`", "`quote_enabled`", "`reasoning_enabled`"}
+	placeholder := []string{"?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?", "?"}
+	args := []any{create.UserID, create.DatasetID, create.DatasetName, create.AssistantID, create.DocumentCount, create.RAGFlowUserID, create.RAGFlowEmail, create.RAGFlowPassword, create.APIKey, create.LLMConfigured, create.PreferredLLMID, create.DatasetIDs, create.QuoteEnabled, create.ReasoningEnabled}
 
 	if create.LastSyncTs != nil {
 		fields = append(fields, "`last_sync_ts`")
@@ -52,7 +52,7 @@ func (d *DB) ListRAGFlowUserMappings(ctx context.Context, find *store.FindRAGFlo
 		where, args = append(where, "`dataset_id` = ?"), append(args, *find.DatasetID)
 	}
 
-	query := "SELECT `id`, `user_id`, `dataset_id`, `dataset_name`, `assistant_id`, `document_count`, `last_sync_ts`, `ragflow_user_id`, `ragflow_email`, `ragflow_password`, `api_key`, `llm_configured`, `preferred_llm_id`, `dataset_ids`, `created_ts`, `updated_ts` FROM `ragflow_user_mapping` WHERE " + strings.Join(where, " AND ")
+	query := "SELECT `id`, `user_id`, `dataset_id`, `dataset_name`, `assistant_id`, `document_count`, `last_sync_ts`, `ragflow_user_id`, `ragflow_email`, `ragflow_password`, `api_key`, `llm_configured`, `preferred_llm_id`, `dataset_ids`, `quote_enabled`, `reasoning_enabled`, `created_ts`, `updated_ts` FROM `ragflow_user_mapping` WHERE " + strings.Join(where, " AND ")
 
 	rows, err := d.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -78,6 +78,8 @@ func (d *DB) ListRAGFlowUserMappings(ctx context.Context, find *store.FindRAGFlo
 			&mapping.LLMConfigured,
 			&mapping.PreferredLLMID,
 			&mapping.DatasetIDs,
+			&mapping.QuoteEnabled,
+			&mapping.ReasoningEnabled,
 			&mapping.CreatedTs,
 			&mapping.UpdatedTs,
 		); err != nil {
@@ -130,6 +132,12 @@ func (d *DB) UpdateRAGFlowUserMapping(ctx context.Context, update *store.UpdateR
 	}
 	if update.DatasetIDs != nil {
 		set, args = append(set, "`dataset_ids` = ?"), append(args, *update.DatasetIDs)
+	}
+	if update.QuoteEnabled != nil {
+		set, args = append(set, "`quote_enabled` = ?"), append(args, *update.QuoteEnabled)
+	}
+	if update.ReasoningEnabled != nil {
+		set, args = append(set, "`reasoning_enabled` = ?"), append(args, *update.ReasoningEnabled)
 	}
 	if update.UpdatedTs != nil {
 		set, args = append(set, "`updated_ts` = ?"), append(args, *update.UpdatedTs)

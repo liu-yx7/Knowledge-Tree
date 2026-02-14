@@ -24,8 +24,14 @@ type RAGFlowUserMapping struct {
 	// DatasetIDs 用户选择的 Dataset ID 列表（JSON 数组字符串）
 	// 例如：["kb_001", "kb_002"]
 	DatasetIDs string
-	CreatedTs  int64
-	UpdatedTs  int64
+	// QuoteEnabled RAG 引用开关（默认 true）
+	// P4 新增字段，控制对话时是否返回引用信息
+	QuoteEnabled bool
+	// ReasoningEnabled 深度研究（Reasoning）开关（默认 false）
+	// P4 新增字段，控制对话时是否启用深度研究功能
+	ReasoningEnabled bool
+	CreatedTs        int64
+	UpdatedTs        int64
 }
 
 // FindRAGFlowUserMapping specifies filter criteria for finding user mappings.
@@ -53,7 +59,11 @@ type UpdateRAGFlowUserMapping struct {
 	PreferredLLMID *string
 	// DatasetIDs 用户选择的 Dataset ID 列表
 	DatasetIDs *string
-	UpdatedTs  *int64
+	// QuoteEnabled RAG 引用开关
+	QuoteEnabled *bool
+	// ReasoningEnabled 深度研究开关
+	ReasoningEnabled *bool
+	UpdatedTs        *int64
 }
 
 // DeleteRAGFlowUserMapping specifies which mapping to delete.

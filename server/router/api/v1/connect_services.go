@@ -630,3 +630,55 @@ func (s *ConnectServiceHandler) ListContentSyncStates(ctx context.Context, req *
 	}
 	return connect.NewResponse(resp), nil
 }
+
+// LLMService
+
+func (s *ConnectServiceHandler) ListAvailableModels(ctx context.Context, req *connect.Request[v1pb.ListAvailableModelsRequest]) (*connect.Response[v1pb.ListAvailableModelsResponse], error) {
+	resp, err := s.APIV1Service.ListAvailableModels(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetUserLLMPreference(ctx context.Context, req *connect.Request[v1pb.GetUserLLMPreferenceRequest]) (*connect.Response[v1pb.UserLLMPreference], error) {
+	resp, err := s.APIV1Service.GetUserLLMPreference(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) SetUserLLMPreference(ctx context.Context, req *connect.Request[v1pb.SetUserLLMPreferenceRequest]) (*connect.Response[v1pb.UserLLMPreference], error) {
+	resp, err := s.APIV1Service.SetUserLLMPreference(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ChatSettingsService
+
+func (s *ConnectServiceHandler) ListDatasets(ctx context.Context, req *connect.Request[v1pb.ListDatasetsRequest]) (*connect.Response[v1pb.ListDatasetsResponse], error) {
+	resp, err := s.APIV1Service.ListDatasets(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetChatSettings(ctx context.Context, req *connect.Request[v1pb.GetChatSettingsRequest]) (*connect.Response[v1pb.ChatSettings], error) {
+	resp, err := s.APIV1Service.GetChatSettings(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) UpdateChatSettings(ctx context.Context, req *connect.Request[v1pb.UpdateChatSettingsRequest]) (*connect.Response[v1pb.ChatSettings], error) {
+	resp, err := s.APIV1Service.UpdateChatSettings(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
