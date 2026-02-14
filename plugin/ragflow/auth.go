@@ -305,3 +305,142 @@ func NewAuthClientForTesting(baseURL string, publicKeyPEM []byte) (*AuthClient, 
 		},
 	}, nil
 }
+
+// ==================== LLM 配置（Web API，需要登录态）====================
+
+// SetLLMAPIKeyRequest 配置 LLM 提供商的请求
+type SetLLMAPIKeyRequest struct {
+	// LLMFactory LLM 提供商名称，例如 "Tongyi-Qianwen"
+	LLMFactory string
+	// APIKey 提供商的 API Key（例如百炼 API Key）
+	APIKey string
+	// BaseURL 可选，自定义 API 端点
+	BaseURL string
+}
+
+// SetLLMAPIKey 配置 LLM 提供商（Web API，需要登录态）
+// API: POST /llm/set_api_key
+// 注意：这是 RAGFlow Web 端 API，需要使用登录返回的 Authorization Token（非 SDK API Key）
+//
+// 参数:
+//   - ctx: 上下文
+//   - authToken: 登录返回的 Authorization Token（从 Login 返回的 AuthResult.AuthToken）
+//   - req: 配置请求
+//
+// 返回: 错误或 nil
+//
+// 行为说明:
+// 1. RAGFlow 会验证 API Key 是否有效（调用一次 Chat/Embedding 测试）
+// 2. 将配置写入 tenant_llm 表
+// 3. 为该 llm_factory 下的所有模型创建配置记录
+func (c *AuthClient) SetLLMAPIKey(ctx context.Context, authToken string, req *SetLLMAPIKeyRequest) error {
+	if authToken == "" {
+		return fmt.Errorf("Authorization Token 不能为空")
+	}
+	if req.LLMFactory == "" || req.APIKey == "" {
+		return fmt.Errorf("LLMFactory 和 APIKey 不能为空")
+	}
+
+	payload := map[string]string{
+		"llm_factory": req.LLMFactory,
+		"api_key":     req.APIKey,
+	}
+	if req.BaseURL != "" {
+		payload["base_url"] = req.BaseURL
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	url := c.config.BaseURL + "/llm/set_api_key"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	// 使用登录返回的 Authorization Token（Web API 认证方式）
+	httpReq.Header.Set("Authorization", authToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("配置 LLM 失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result APIResponse[any]
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return fmt.Errorf("配置 LLM 失败 (code=%d): %s", result.Code, result.Message)
+	}
+
+	return nil
+}
+
+// UpdateUserSetting 更新用户设置（Web API，需要登录态）
+// API: POST /user/setting
+// 主要用于设置用户默认 LLM 模型
+//
+// 参数:
+//   - ctx: 上下文
+//   - authToken: 登录返回的 Authorization Token
+//   - settings: 设置键值对，例如 {"llm_id": "qwen-plus@Tongyi-Qianwen"}
+func (c *AuthClient) UpdateUserSetting(ctx context.Context, authToken string, settings map[string]any) error {
+	if authToken == "" {
+		return fmt.Errorf("Authorization Token 不能为空")
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	url := c.config.BaseURL + "/user/setting"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", authToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("更新用户设置失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result APIResponse[any]
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return fmt.Errorf("更新用户设置失败 (code=%d): %s", result.Code, result.Message)
+	}
+
+	return nil
+}

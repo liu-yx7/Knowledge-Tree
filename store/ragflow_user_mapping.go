@@ -15,8 +15,17 @@ type RAGFlowUserMapping struct {
 	RAGFlowEmail    string
 	RAGFlowPassword string
 	APIKey          string
-	CreatedTs       int64
-	UpdatedTs       int64
+	// LLMConfigured 标记用户是否已配置 LLM 提供商（百炼）
+	// P4 新增字段，用于跳过重复配置
+	LLMConfigured bool
+	// PreferredLLMID 用户偏好的 LLM 模型 ID
+	// 格式：{model_name}@{provider}，例如 "qwen-max@Tongyi-Qianwen"
+	PreferredLLMID string
+	// DatasetIDs 用户选择的 Dataset ID 列表（JSON 数组字符串）
+	// 例如：["kb_001", "kb_002"]
+	DatasetIDs string
+	CreatedTs  int64
+	UpdatedTs  int64
 }
 
 // FindRAGFlowUserMapping specifies filter criteria for finding user mappings.
@@ -38,7 +47,13 @@ type UpdateRAGFlowUserMapping struct {
 	RAGFlowEmail    *string
 	RAGFlowPassword *string
 	APIKey          *string
-	UpdatedTs       *int64
+	// LLMConfigured 标记用户是否已配置 LLM 提供商
+	LLMConfigured *bool
+	// PreferredLLMID 用户偏好的 LLM 模型 ID
+	PreferredLLMID *string
+	// DatasetIDs 用户选择的 Dataset ID 列表
+	DatasetIDs *string
+	UpdatedTs  *int64
 }
 
 // DeleteRAGFlowUserMapping specifies which mapping to delete.

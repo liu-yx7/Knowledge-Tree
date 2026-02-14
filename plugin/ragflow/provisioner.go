@@ -517,3 +517,170 @@ func (p *Provisioner) createClient(apiKey string) *Client {
 		MaxRetries: p.config.MaxRetries,
 	})
 }
+
+// ==================== LLM 配置 ====================
+
+// EnsureLLMConfig 确保用户的 RAGFlow 账户已配置 LLM 提供商（百炼）
+// 这是 P4 新增的方法，用于在用户首次使用 AI 对话时自动配置百炼模型。
+//
+// 流程：
+// 1. 检查是否配置了 DashScopeAPIKey（系统级配置）
+// 2. 使用用户凭据登录 RAGFlow 获取 AuthToken
+// 3. 调用 Web API 配置 LLM 提供商（Tongyi-Qianwen）
+// 4. 更新映射表标记 LLM 已配置
+//
+// 注意：此方法是幂等的，重复调用不会产生副作用。
+func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32) error {
+	// 检查系统级配置
+	if p.config.DashScopeAPIKey == "" {
+		slog.Debug("未配置 DashScopeAPIKey，跳过 LLM 自动配置",
+			slog.Int("userID", int(memosUserID)))
+		return nil
+	}
+
+	// 查询用户映射
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil {
+		return fmt.Errorf("用户映射不存在，需先完成认证配置")
+	}
+
+	// 检查是否已配置 LLM（通过 LLMConfigured 字段判断）
+	if mapping.LLMConfigured {
+		slog.Debug("用户已配置 LLM，跳过",
+			slog.Int("userID", int(memosUserID)))
+		return nil
+	}
+
+	// 使用存储的凭据登录获取 AuthToken
+	if mapping.RAGFlowEmail == "" || mapping.RAGFlowPassword == "" {
+		return fmt.Errorf("用户凭据不完整，无法配置 LLM")
+	}
+
+	authResult, err := p.authClient.Login(ctx, &LoginRequest{
+		Email:    mapping.RAGFlowEmail,
+		Password: mapping.RAGFlowPassword,
+	})
+	if err != nil {
+		return fmt.Errorf("登录 RAGFlow 失败: %w", err)
+	}
+
+	// 调用 Web API 配置 LLM 提供商
+	err = p.authClient.SetLLMAPIKey(ctx, authResult.AuthToken, &SetLLMAPIKeyRequest{
+		LLMFactory: "Tongyi-Qianwen",
+		APIKey:     p.config.DashScopeAPIKey,
+	})
+	if err != nil {
+		// 如果错误包含 "already" 或 "exist"，说明已配置，忽略错误
+		if strings.Contains(strings.ToLower(err.Error()), "already") ||
+			strings.Contains(strings.ToLower(err.Error()), "exist") {
+			slog.Info("LLM 提供商已配置（忽略重复配置错误）",
+				slog.Int("userID", int(memosUserID)))
+		} else {
+			return fmt.Errorf("配置 LLM 提供商失败: %w", err)
+		}
+	}
+
+	// 更新映射表标记 LLM 已配置
+	now := time.Now().Unix()
+	llmConfigured := true
+	if err := p.store.UpdateRAGFlowUserMapping(ctx, &store.UpdateRAGFlowUserMapping{
+		ID:            mapping.ID,
+		LLMConfigured: &llmConfigured,
+		UpdatedTs:     &now,
+	}); err != nil {
+		slog.Warn("更新 LLM 配置状态失败",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		// 不返回错误，LLM 已配置成功
+	}
+
+	slog.Info("为用户配置了 LLM 提供商（Tongyi-Qianwen）",
+		slog.Int("userID", int(memosUserID)))
+
+	return nil
+}
+
+// UpdateUserAssistantLLM 更新用户 Assistant 的 LLM 模型
+// 用于用户切换模型时同步更新 RAGFlow Assistant
+func (p *Provisioner) UpdateUserAssistantLLM(ctx context.Context, memosUserID int32, modelName string) error {
+	// 查询用户映射获取 AssistantID
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil || mapping.AssistantID == "" {
+		return fmt.Errorf("用户 Assistant 不存在")
+	}
+	if mapping.APIKey == "" {
+		return fmt.Errorf("用户 API Key 不存在")
+	}
+
+	// 创建客户端并更新 Assistant
+	client := p.createClient(mapping.APIKey)
+	err = client.UpdateAssistantLLM(ctx, mapping.AssistantID, &UpdateAssistantLLMRequest{
+		ModelName: modelName,
+	})
+	if err != nil {
+		return fmt.Errorf("更新 Assistant LLM 失败: %w", err)
+	}
+
+	slog.Info("更新了用户 Assistant 的 LLM 模型",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("assistantID", mapping.AssistantID),
+		slog.String("modelName", modelName))
+
+	return nil
+}
+
+// UpdateUserAssistantDatasets 更新用户 Assistant 关联的 Dataset 列表
+// 用于用户切换 Dataset 时同步更新 RAGFlow Assistant
+func (p *Provisioner) UpdateUserAssistantDatasets(ctx context.Context, memosUserID int32, datasetIDs []string) error {
+	// 查询用户映射获取 AssistantID
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil || mapping.AssistantID == "" {
+		return fmt.Errorf("用户 Assistant 不存在")
+	}
+	if mapping.APIKey == "" {
+		return fmt.Errorf("用户 API Key 不存在")
+	}
+
+	// 创建客户端并更新 Assistant
+	client := p.createClient(mapping.APIKey)
+	err = client.UpdateAssistantDatasets(ctx, mapping.AssistantID, datasetIDs)
+	if err != nil {
+		return fmt.Errorf("更新 Assistant Datasets 失败: %w", err)
+	}
+
+	slog.Info("更新了用户 Assistant 的 Dataset 列表",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("assistantID", mapping.AssistantID),
+		slog.Any("datasetIDs", datasetIDs))
+
+	return nil
+}
+
+// GetUserAssistantID 获取用户的 Assistant ID
+func (p *Provisioner) GetUserAssistantID(ctx context.Context, memosUserID int32) (string, error) {
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil || mapping.AssistantID == "" {
+		return "", fmt.Errorf("用户 Assistant 不存在")
+	}
+	return mapping.AssistantID, nil
+}

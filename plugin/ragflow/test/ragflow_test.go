@@ -582,7 +582,11 @@ func TestClient_CreateChatAssistant(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
-	result, err := client.CreateChatAssistant(ctx, "测试助手", []string{"ds-1", "ds-2"})
+	result, err := client.CreateChatAssistant(ctx, &ragflow.CreateChatAssistantRequest{
+		Name:       "测试助手",
+		DatasetIDs: []string{"ds-1", "ds-2"},
+		LLMID:      "qwen-plus@Tongyi-Qianwen",
+	})
 
 	if err != nil {
 		t.Fatalf("CreateChatAssistant 失败: %v", err)

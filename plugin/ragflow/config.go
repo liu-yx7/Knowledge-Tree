@@ -24,6 +24,13 @@ type Config struct {
 	// 必须是 RAGFlow 中已配置的模型，否则创建 Assistant 会失败
 	DefaultLLMID string
 
+	// DashScopeAPIKey 百炼 API Key（用于调用百炼 API 和配置 RAGFlow LLM）
+	// 从环境变量 DASHSCOPE_API_KEY 获取
+	// 用途：
+	// 1. 调用百炼 API 获取可用模型列表
+	// 2. 配置 RAGFlow 的 Tongyi-Qianwen 模型提供商
+	DashScopeAPIKey string
+
 	// Timeout 请求超时时间
 	Timeout time.Duration
 

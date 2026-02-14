@@ -70,6 +70,113 @@ func (c *Client) UpdateChatAssistant(ctx context.Context, chatID string, update 
 	return nil
 }
 
+// UpdateAssistantLLMRequest 更新 Assistant LLM 配置的请求
+type UpdateAssistantLLMRequest struct {
+	// ModelName LLM 模型标识，格式：{model_name}@{provider}
+	// 例如 "qwen-max@Tongyi-Qianwen"
+	ModelName string
+
+	// Temperature 温度参数（可选，0.0-2.0）
+	Temperature *float64
+
+	// TopP Top-P 参数（可选，0.0-1.0）
+	TopP *float64
+
+	// MaxTokens 最大生成 token 数（可选）
+	MaxTokens *int
+}
+
+// UpdateAssistantLLM 更新 Assistant 的 LLM 模型配置
+// 用于用户切换模型时同步更新 RAGFlow Assistant
+func (c *Client) UpdateAssistantLLM(ctx context.Context, chatID string, req *UpdateAssistantLLMRequest) error {
+	if chatID == "" {
+		return fmt.Errorf("chatID 不能为空")
+	}
+	if req.ModelName == "" {
+		return fmt.Errorf("ModelName 不能为空")
+	}
+
+	llmConfig := map[string]any{
+		"model_name": req.ModelName,
+	}
+	if req.Temperature != nil {
+		llmConfig["temperature"] = *req.Temperature
+	}
+	if req.TopP != nil {
+		llmConfig["top_p"] = *req.TopP
+	}
+	if req.MaxTokens != nil {
+		llmConfig["max_tokens"] = *req.MaxTokens
+	}
+
+	update := map[string]any{
+		"llm": llmConfig,
+	}
+
+	return c.UpdateChatAssistant(ctx, chatID, update)
+}
+
+// UpdateAssistantDatasets 更新 Assistant 关联的 Dataset 列表
+// 用于用户切换 Dataset 时同步更新 RAGFlow Assistant
+func (c *Client) UpdateAssistantDatasets(ctx context.Context, chatID string, datasetIDs []string) error {
+	if chatID == "" {
+		return fmt.Errorf("chatID 不能为空")
+	}
+
+	update := map[string]any{
+		"dataset_ids": datasetIDs,
+	}
+
+	return c.UpdateChatAssistant(ctx, chatID, update)
+}
+
+// UpdateAssistantConfig 更新 Assistant 的完整配置（LLM + Datasets）
+// 用于一次性更新多个配置项
+type UpdateAssistantConfigRequest struct {
+	// LLM 配置（可选）
+	LLM *UpdateAssistantLLMRequest
+
+	// DatasetIDs Dataset ID 列表（可选）
+	DatasetIDs []string
+}
+
+// UpdateAssistantConfig 更新 Assistant 的完整配置
+func (c *Client) UpdateAssistantConfig(ctx context.Context, chatID string, req *UpdateAssistantConfigRequest) error {
+	if chatID == "" {
+		return fmt.Errorf("chatID 不能为空")
+	}
+
+	update := make(map[string]any)
+
+	// 设置 LLM 配置
+	if req.LLM != nil && req.LLM.ModelName != "" {
+		llmConfig := map[string]any{
+			"model_name": req.LLM.ModelName,
+		}
+		if req.LLM.Temperature != nil {
+			llmConfig["temperature"] = *req.LLM.Temperature
+		}
+		if req.LLM.TopP != nil {
+			llmConfig["top_p"] = *req.LLM.TopP
+		}
+		if req.LLM.MaxTokens != nil {
+			llmConfig["max_tokens"] = *req.LLM.MaxTokens
+		}
+		update["llm"] = llmConfig
+	}
+
+	// 设置 Dataset IDs
+	if req.DatasetIDs != nil {
+		update["dataset_ids"] = req.DatasetIDs
+	}
+
+	if len(update) == 0 {
+		return nil // 没有需要更新的内容
+	}
+
+	return c.UpdateChatAssistant(ctx, chatID, update)
+}
+
 // ListChatAssistants 列出聊天助手
 // RAGFlow API: GET /api/v1/chats
 func (c *Client) ListChatAssistants(ctx context.Context, opts *ListOptions) ([]ChatAssistant, error) {

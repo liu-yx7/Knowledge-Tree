@@ -167,6 +167,9 @@ CREATE TABLE ragflow_user_mapping (
   ragflow_email TEXT NOT NULL DEFAULT '',
   ragflow_password TEXT NOT NULL DEFAULT '',
   api_key TEXT NOT NULL DEFAULT '',
+  llm_configured INTEGER NOT NULL DEFAULT 0,
+  preferred_llm_id TEXT NOT NULL DEFAULT '',
+  dataset_ids TEXT NOT NULL DEFAULT '[]',
   created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
   FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
