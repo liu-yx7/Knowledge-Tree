@@ -12,6 +12,8 @@ import { MemoService } from "./types/proto/api/v1/memo_service_pb";
 import { ShortcutService } from "./types/proto/api/v1/shortcut_service_pb";
 import { UserService } from "./types/proto/api/v1/user_service_pb";
 import { RAGFlowService } from "./types/proto/api/v1/ragflow_service_pb";
+import { LLMService } from "./types/proto/api/v1/llm_service_pb";
+import { ChatSettingsService } from "./types/proto/api/v1/chat_settings_service_pb";
 import { redirectOnAuthFailure } from "./utils/auth-redirect";
 
 // ============================================================================
@@ -153,3 +155,9 @@ export const aiServiceClient = createClient(AIService, transport);
 
 // RAGFlow service client
 export const ragflowServiceClient = createClient(RAGFlowService, transport);
+
+// LLM service client
+export const llmServiceClient = createClient(LLMService, transport);
+
+// Chat settings service client
+export const chatSettingsServiceClient = createClient(ChatSettingsService, transport);

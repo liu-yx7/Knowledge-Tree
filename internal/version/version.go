@@ -8,8 +8,8 @@ import (
 )
 
 // Version is the service current released version.
-// Semantic versioning: https://semver.org/
-var Version = "0.30.0"
+// P4: 更新为 0.31.0 以支持 LLM 配置和 Chat Settings 迁移
+var Version = "0.31.0"
 
 func GetCurrentVersion() string {
 	return Version

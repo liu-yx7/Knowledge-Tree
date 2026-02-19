@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/usememos/memos/internal/profile"
+	"github.com/usememos/memos/plugin/dashscope"
 	"github.com/usememos/memos/plugin/ragflow"
 	storepb "github.com/usememos/memos/proto/gen/store"
 	apiv1 "github.com/usememos/memos/server/router/api/v1"
@@ -86,7 +87,10 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 		s.ragflowSyncRunner.SetProvisioner(ragflowProvisioner)
 	}
 
-	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, ragflowProvisioner, s.ragflowSyncRunner)
+	// Initialize DashScope client (用于获取可用 LLM 模型列表)
+	dashScopeClient := initDashScopeClient()
+
+	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, ragflowProvisioner, s.ragflowSyncRunner, dashScopeClient)
 
 	// Register SSE streaming endpoint for AI chat (native HTTP, bypasses gRPC).
 	apiV1Service.RegisterStreamRoutes(echoServer)
@@ -292,4 +296,29 @@ func initRAGFlowProvisioner(cfg *ragflow.Config, s *store.Store) *ragflow.Provis
 
 	slog.Info("RAGFlow provisioner initialized")
 	return provisioner
+}
+
+// initDashScopeClient 初始化 DashScope 客户端
+// 用于获取可用的 LLM 模型列表，供用户在前端选择
+func initDashScopeClient() *dashscope.Client {
+	apiKey := os.Getenv("DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		slog.Warn("DASHSCOPE_API_KEY not configured, LLM model selection will be unavailable",
+			slog.String("hint", "Set DASHSCOPE_API_KEY environment variable to enable model listing"))
+		return nil
+	}
+
+	cfg := &dashscope.Config{
+		APIKey: apiKey,
+	}
+	cfg = cfg.WithDefaults()
+
+	client, err := dashscope.NewClient(cfg)
+	if err != nil {
+		slog.Error("DashScope client initialization failed", "error", err)
+		return nil
+	}
+
+	slog.Info("DashScope client initialized")
+	return client
 }

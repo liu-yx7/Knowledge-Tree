@@ -54,7 +54,7 @@ type APIV1Service struct {
 	thumbnailSemaphore *semaphore.Weighted
 }
 
-func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowProvisioner *ragflow.Provisioner, ragflowSyncRunner *ragflowsync.Runner) *APIV1Service {
+func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowProvisioner *ragflow.Provisioner, ragflowSyncRunner *ragflowsync.Runner, dashScopeClient *dashscope.Client) *APIV1Service {
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
@@ -66,6 +66,7 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 		RAGFlowClient:      ragflowClient,
 		RAGFlowProvisioner: ragflowProvisioner,
 		RAGFlowSyncRunner:  ragflowSyncRunner,
+		DashScopeClient:    dashScopeClient,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
 }

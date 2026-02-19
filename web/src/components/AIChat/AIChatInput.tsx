@@ -3,6 +3,9 @@ import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import ModelSelector from "./ModelSelector";
+import DatasetSelector from "./DatasetSelector";
+import ChatOptions from "./ChatOptions";
 
 interface AIChatInputProps {
   onSend: (content: string) => void;
@@ -12,9 +15,11 @@ interface AIChatInputProps {
   /** 正在流式传输中（显示中止按钮） */
   isStreaming?: boolean;
   compact?: boolean;
+  /** 是否显示工具栏（模型选择、Dataset 选择、设置） */
+  showToolbar?: boolean;
 }
 
-const AIChatInput = ({ onSend, onAbort, disabled, isStreaming = false, compact = false }: AIChatInputProps) => {
+const AIChatInput = ({ onSend, onAbort, disabled, isStreaming = false, compact = false, showToolbar = true }: AIChatInputProps) => {
   const [inputMessage, setInputMessage] = useState("");
 
   const handleSend = () => {
@@ -47,7 +52,19 @@ const AIChatInput = ({ onSend, onAbort, disabled, isStreaming = false, compact =
           />
 
           {/* 底部工具栏 */}
-          <div className={cn("absolute left-2 right-2 flex items-center justify-end", compact ? "bottom-1" : "bottom-2")}>
+          <div className={cn("absolute left-2 right-2 flex items-center justify-between", compact ? "bottom-1" : "bottom-2")}>
+            {/* 左侧：模型选择、Dataset 选择、设置 */}
+            {showToolbar ? (
+              <div className="flex items-center gap-1">
+                <ModelSelector compact={compact} />
+                <DatasetSelector compact={compact} />
+                <ChatOptions compact={compact} />
+              </div>
+            ) : (
+              <div />
+            )}
+
+            {/* 右侧：发送/中止按钮 */}
             {isStreaming ? (
               // 中止按钮
               <Button
