@@ -159,6 +159,10 @@ func (c *Client) CreateDataset(ctx context.Context, req *CreateDatasetRequest) (
 // ListDatasets 列出数据集
 // RAGFlow API: GET /api/v1/datasets
 func (c *Client) ListDatasets(ctx context.Context, opts *ListOptions) ([]Dataset, error) {
+	// 防御性处理：opts 为 nil 时使用默认分页参数
+	if opts == nil {
+		opts = &ListOptions{Page: 1, PageSize: 100}
+	}
 	path := fmt.Sprintf("/api/v1/datasets?page=%d&page_size=%d", opts.Page, opts.PageSize)
 	if opts.Name != "" {
 		path += "&name=" + opts.Name

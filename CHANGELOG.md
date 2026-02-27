@@ -1,5 +1,111 @@
 # Changelog
 
+## [2026-02-26] Bug 修复：ListAvailableModels 暴露了 RAGFlow 未注册的模型
+
+### 问题
+
+用户选择 `qwen3.5-plus` 后触发 Assistant 创建失败：
+
+```
+WARN 创建 Chat Assistant 失败（非阻塞） userID=12 llmID=qwen3.5-plus@Tongyi-Qianwen
+     error="RAGFlow 错误 (code=102): `model_name` qwen3.5-plus@Tongyi-Qianwen doesn't exist"
+```
+
+### 根因
+
+`qwen3.5-plus` 存在于 DashScope API 返回列表（`isChatModel` 前缀 `qwen3` 匹配），
+但**不在 `ragflow/conf/llm_factories.json` 的 `Tongyi-Qianwen` 工厂注册表中**。
+
+`EnsureLLMConfig` 调用 `SetLLMAPIKey("Tongyi-Qianwen", key)` 时，RAGFlow 只为
+`llm_factories.json` 中静态注册的模型写入 `TenantLLM` 表记录，未注册的模型永远
+不会出现在 `TenantLLM` 中，后续 `CreateChatAssistant` 用该 model_id 必然失败。
+
+### 修复
+
+在 `ListChatModels` 加第二道过滤——**RAGFlow 注册表白名单**：
+
+```
+DashScope API → isChatModel → isRAGFlowRegistered → 前端展示
+```
+
+`ragflowRegisteredChatModels`：以 `map[string]struct{}` 硬编码 `llm_factories.json`
+中 `Tongyi-Qianwen.llm` 下所有 chat 类模型名称（42 个），O(1) 查找，零运行时开销。
+
+同步在 `SetUserLLMPreference` 用白名单替换 `DashScope.ModelExists` 动态校验，
+确保服务端与前端过滤逻辑完全一致，杜绝旁路绕过。
+
+### 修改文件
+
+- `plugin/dashscope/client.go`：新增 `ragflowRegisteredChatModels` 白名单集合、
+  `isRAGFlowRegistered`（内部）、`IsRAGFlowRegistered`（导出）；
+  `ListChatModels` 加第二道白名单过滤
+- `server/router/api/v1/llm_service.go`：`SetUserLLMPreference` 的模型校验从
+  `DashScopeClient.ModelExists` 改为 `dashscope.IsRAGFlowRegistered`；import dashscope 包
+- `plugin/dashscope/client_test.go`：修复遗留的 `ModelsResponse`（旧 API 格式）
+  引用错误；补充 `TestIsRAGFlowRegistered` 白名单测试；
+  `TestClient_ListChatModels` 新增对 `qwen3.5-plus` 被正确过滤的断言
+
+### 验证
+
+```
+go test ./plugin/dashscope/... ./server/router/api/v1/... ./plugin/ragflow/...
+# ok  plugin/dashscope       (所有 9 个测试通过，含新增白名单测试)
+# ok  server/router/api/v1   (cached)
+# ok  plugin/ragflow         (cached)
+```
+
+### 维护说明
+
+当 `ragflow/conf/llm_factories.json` 的 `Tongyi-Qianwen.llm` 新增 chat 模型时，
+**同步** 在 `plugin/dashscope/client.go` 的 `ragflowRegisteredChatModels` 追加对应名称。
+
+## [2026-02-25] Bug 修复：Chat Assistant 创建失败（model_name doesn't exist）
+
+### 问题
+
+用户完成 LLM 偏好设置后触发 AI Chat，Assistant 创建失败：
+
+```
+WARN 创建 Chat Assistant 失败（非阻塞） userID=12 llmID=qwen-plus@Tongyi-Qianwen
+     error="RAGFlow 错误 (code=102): `model_name` qwen-plus@Tongyi-Qianwen doesn't exist"
+```
+
+### 根因（三个独立缺陷叠加）
+
+1. **`ensureAssistant` 在 TenantLLM 未配置时直接尝试创建 Assistant**
+   RAGFlow 校验 `model_name` 时会查 `TenantLLM` 表（该 tenant 下已配置的模型列表）。
+   用户刚注册 RAGFlow，`EnsureLLMConfig` 从未被调用，`TenantLLM` 表无记录 → 报错。
+
+2. **`ensureAssistant` 忽略用户的 `preferred_llm_id`，始终用 `DefaultLLMID`**
+   用户已在 `15:11:43` 通过 `SetUserLLMPreference` 设置了 `qwen3.5-plus@system`，
+   但 `ensureAssistant` 仍读 `p.config.DefaultLLMID`（`qwen-plus@Tongyi-Qianwen`），
+   偏好设置形同虚设。
+
+3. **`SetUserLLMPreference` 设置偏好后没有补偿创建 Assistant**
+   Assistant 尚未创建时，`SetUserLLMPreference` 只更新 `preferred_llm_id`，
+   不触发 `ensureAssistant`，导致下次 `EnsureUserResources` 才尝试创建，
+   但此时已错过 LLM 偏好写入前的窗口。
+
+### 修复
+
+**`plugin/ragflow/provisioner.go` — `ensureAssistant` 方法**：
+- 创建 Assistant 前先调用 `EnsureLLMConfig`（幂等），确保 RAGFlow `TenantLLM` 表
+  中已有该 tenant 的 LLM 配置记录
+- LLM ID 选取优先级改为：`preferred_llm_id` > `DefaultLLMID`（而非直接用 DefaultLLMID）
+
+**`server/router/api/v1/llm_service.go` — `SetUserLLMPreference` 方法**：
+- 在用户偏好写入 DB 后，若 `AssistantID` 为空，**异步触发 `EnsureUserResources`**
+  完成 Assistant 补偿创建（此时 `preferred_llm_id` 和 `LLMConfigured` 均已就绪）
+
+### 修改文件
+
+- `plugin/ragflow/provisioner.go` — `ensureAssistant` 方法重写
+- `server/router/api/v1/llm_service.go` — `SetUserLLMPreference` 新增补偿创建逻辑
+
+### 验证
+
+- `go build ./...` → 零错误
+
 ## [2026-02-09] 删除废弃的 plugin/llm 插件
 
 ### 背景

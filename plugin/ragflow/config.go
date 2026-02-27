@@ -6,6 +6,33 @@ import (
 	"time"
 )
 
+// ==================== 默认 LLM 模型配置 ====================
+
+// DefaultLLMModels 默认 LLM 模型列表（按优先级排序）
+// 创建 Chat Assistant 时会按顺序尝试，直到找到可用模型
+// 格式：{model_name}@{provider}
+var DefaultLLMModels = []string{
+	"qwen-plus@Tongyi-Qianwen",  // 通义千问 Plus（推荐，性价比高）
+	"qwen-turbo@Tongyi-Qianwen", // 通义千问 Turbo（备选，更快）
+	"qwen-max@Tongyi-Qianwen",   // 通义千问 Max（备选，更强）
+	"deepseek-chat@DeepSeek",    // DeepSeek（如果用户配置了）
+}
+
+// DefaultLLMProvider 默认 LLM 提供商（与 EnsureLLMConfig 配置的一致）
+const DefaultLLMProvider = "Tongyi-Qianwen"
+
+// GetDefaultLLMID 获取默认 LLM 模型 ID
+// 优先级：环境变量 > 硬编码默认值
+func GetDefaultLLMID() string {
+	// 1. 优先使用环境变量（保持向后兼容）
+	if envLLM := os.Getenv("RAGFLOW_DEFAULT_LLM_ID"); envLLM != "" {
+		return envLLM
+	}
+
+	// 2. 返回硬编码默认值（qwen-plus 是最稳定的选择）
+	return DefaultLLMModels[0]
+}
+
 // ==================== 配置定义 ====================
 
 // Config RAGFlow 连接配置

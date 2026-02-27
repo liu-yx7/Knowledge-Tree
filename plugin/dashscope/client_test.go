@@ -14,24 +14,11 @@ import (
 
 // ==================== 测试辅助 ====================
 
-// mockModelsResponse 创建模拟的模型列表响应
-func mockModelsResponse(models []Model, pageNo, pageSize, total int) ModelsResponse {
-	totalPages := (total + pageSize - 1) / pageSize
-	return ModelsResponse{
-		Output: struct {
-			Data       []Model `json:"data"`
-			Total      int     `json:"total"`
-			PageNo     int     `json:"page_no"`
-			PageSize   int     `json:"page_size"`
-			TotalPages int     `json:"total_pages"`
-		}{
-			Data:       models,
-			Total:      total,
-			PageNo:     pageNo,
-			PageSize:   pageSize,
-			TotalPages: totalPages,
-		},
-		RequestID: "test-request-id",
+// mockOpenAIModelsResponse 创建模拟的 OpenAI 兼容模式模型列表响应
+func mockOpenAIModelsResponse(models []OpenAIModel) OpenAIModelsResponse {
+	return OpenAIModelsResponse{
+		Object: "list",
+		Data:   models,
 	}
 }
 
@@ -116,37 +103,17 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestClient_ListModels(t *testing.T) {
-	// 创建模拟服务器
-	models := []Model{
-		{
-			ModelID:     "model-1",
-			ModelName:   "qwen-plus",
-			DisplayName: "通义千问-Plus",
-			ModelType:   "text-generation",
-			Status:      "RUNNING",
-		},
-		{
-			ModelID:     "model-2",
-			ModelName:   "qwen-max",
-			DisplayName: "通义千问-Max",
-			ModelType:   "text-generation",
-			Status:      "RUNNING",
-		},
-		{
-			ModelID:     "model-3",
-			ModelName:   "text-embedding-v1",
-			DisplayName: "文本嵌入模型",
-			ModelType:   "embeddings",
-			Status:      "RUNNING",
-		},
+	openAIModels := []OpenAIModel{
+		{ID: "qwen-plus", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "qwen-max", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "text-embedding-v2", Object: "model", Created: 1000, OwnedBy: "system"},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 验证请求头
 		assert.Equal(t, "Bearer sk-test", r.Header.Get("Authorization"))
-		assert.Contains(t, r.URL.Path, "/api/v1/deployments/models")
+		assert.Contains(t, r.URL.Path, "/compatible-mode/v1/models")
 
-		resp := mockModelsResponse(models, 1, 100, len(models))
+		resp := mockOpenAIModelsResponse(openAIModels)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -167,15 +134,19 @@ func TestClient_ListModels(t *testing.T) {
 }
 
 func TestClient_ListChatModels(t *testing.T) {
-	models := []Model{
-		{ModelName: "qwen-plus", ModelType: "text-generation", Status: "RUNNING"},
-		{ModelName: "qwen-max", ModelType: "text-generation", Status: "RUNNING"},
-		{ModelName: "text-embedding-v1", ModelType: "embeddings", Status: "RUNNING"},
-		{ModelName: "stopped-model", ModelType: "text-generation", Status: "STOPPED"},
+	// qwen-plus 和 qwen-max 在白名单中，deepseek-r1 也在，
+	// text-embedding-v2 被 isChatModel 过滤，
+	// qwen3.5-plus 被 isRAGFlowRegistered 过滤（不在 factories.json）
+	openAIModels := []OpenAIModel{
+		{ID: "qwen-plus", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "qwen-max", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "deepseek-r1", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "text-embedding-v2", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "qwen3.5-plus", Object: "model", Created: 1000, OwnedBy: "system"}, // 不在 RAGFlow 注册表
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := mockModelsResponse(models, 1, 100, len(models))
+		resp := mockOpenAIModelsResponse(openAIModels)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -191,20 +162,30 @@ func TestClient_ListChatModels(t *testing.T) {
 	result, err := client.ListChatModels(ctx)
 
 	assert.NoError(t, err)
-	assert.Len(t, result, 2) // 只返回 RUNNING 的 text-generation 模型
-	assert.Equal(t, "qwen-plus", result[0].ModelName)
-	assert.Equal(t, "qwen-max", result[1].ModelName)
+	// 只返回：qwen-plus、qwen-max、deepseek-r1（均在白名单中）
+	// 排除：text-embedding-v2（非聊天）、qwen3.5-plus（不在 RAGFlow 注册表）
+	assert.Len(t, result, 3)
+
+	names := make([]string, len(result))
+	for i, m := range result {
+		names[i] = m.ModelName
+	}
+	assert.Contains(t, names, "qwen-plus")
+	assert.Contains(t, names, "qwen-max")
+	assert.Contains(t, names, "deepseek-r1")
+	assert.NotContains(t, names, "qwen3.5-plus")
+	assert.NotContains(t, names, "text-embedding-v2")
 }
 
 func TestClient_Cache(t *testing.T) {
 	callCount := 0
-	models := []Model{
-		{ModelName: "qwen-plus", ModelType: "text-generation", Status: "RUNNING"},
+	openAIModels := []OpenAIModel{
+		{ID: "qwen-plus", Object: "model", Created: 1000, OwnedBy: "system"},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		resp := mockModelsResponse(models, 1, 100, len(models))
+		resp := mockOpenAIModelsResponse(openAIModels)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -213,7 +194,7 @@ func TestClient_Cache(t *testing.T) {
 	client, err := NewClient(&Config{
 		APIKey:   "sk-test",
 		BaseURL:  server.URL,
-		CacheTTL: 1 * time.Hour, // 长缓存时间
+		CacheTTL: 1 * time.Hour,
 	})
 	require.NoError(t, err)
 
@@ -236,13 +217,13 @@ func TestClient_Cache(t *testing.T) {
 }
 
 func TestClient_GetModel(t *testing.T) {
-	models := []Model{
-		{ModelName: "qwen-plus", ModelType: "text-generation", Status: "RUNNING"},
-		{ModelName: "qwen-max", ModelType: "text-generation", Status: "RUNNING"},
+	openAIModels := []OpenAIModel{
+		{ID: "qwen-plus", Object: "model", Created: 1000, OwnedBy: "system"},
+		{ID: "qwen-max", Object: "model", Created: 1000, OwnedBy: "system"},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := mockModelsResponse(models, 1, 100, len(models))
+		resp := mockOpenAIModelsResponse(openAIModels)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -256,24 +237,21 @@ func TestClient_GetModel(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 存在的模型
 	model, err := client.GetModel(ctx, "qwen-plus")
 	assert.NoError(t, err)
 	assert.Equal(t, "qwen-plus", model.ModelName)
 
-	// 不存在的模型
 	_, err = client.GetModel(ctx, "non-existent")
 	assert.Error(t, err)
 }
 
 func TestClient_ModelExists(t *testing.T) {
-	models := []Model{
-		{ModelName: "qwen-plus", ModelType: "text-generation", Status: "RUNNING"},
-		{ModelName: "stopped-model", ModelType: "text-generation", Status: "STOPPED"},
+	openAIModels := []OpenAIModel{
+		{ID: "qwen-plus", Object: "model", Created: 1000, OwnedBy: "system"},
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := mockModelsResponse(models, 1, 100, len(models))
+		resp := mockOpenAIModelsResponse(openAIModels)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
@@ -287,13 +265,7 @@ func TestClient_ModelExists(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 存在且运行中
 	assert.True(t, client.ModelExists(ctx, "qwen-plus"))
-
-	// 存在但已停止
-	assert.False(t, client.ModelExists(ctx, "stopped-model"))
-
-	// 不存在
 	assert.False(t, client.ModelExists(ctx, "non-existent"))
 }
 
@@ -315,4 +287,22 @@ func TestClient_APIError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
+}
+
+// ==================== 白名单测试 ====================
+
+func TestIsRAGFlowRegistered(t *testing.T) {
+	// 白名单内的模型
+	assert.True(t, IsRAGFlowRegistered("qwen-plus"))
+	assert.True(t, IsRAGFlowRegistered("qwen-max"))
+	assert.True(t, IsRAGFlowRegistered("deepseek-r1"))
+	assert.True(t, IsRAGFlowRegistered("qwq-plus"))
+	assert.True(t, IsRAGFlowRegistered("Moonshot-Kimi-K2-Instruct"))
+	assert.True(t, IsRAGFlowRegistered("qwen3-32b"))
+
+	// 白名单外的模型（DashScope 有但 RAGFlow 未注册）
+	assert.False(t, IsRAGFlowRegistered("qwen3.5-plus"))
+	assert.False(t, IsRAGFlowRegistered("qwen-turbo-0919"))
+	assert.False(t, IsRAGFlowRegistered("some-future-model"))
+	assert.False(t, IsRAGFlowRegistered(""))
 }

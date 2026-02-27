@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -443,4 +444,76 @@ func (c *AuthClient) UpdateUserSetting(ctx context.Context, authToken string, se
 	}
 
 	return nil
+}
+
+// MyLLMModel RAGFlow /llm/my_llms 返回的模型项
+type MyLLMModel struct {
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	UsedToken int64  `json:"used_token"`
+	Status    string `json:"status"`
+	APIBase   string `json:"api_base,omitempty"`
+}
+
+// MyLLMFactory RAGFlow /llm/my_llms 返回的工厂分组
+type MyLLMFactory struct {
+	Tags []string     `json:"tags"`
+	LLM  []MyLLMModel `json:"llm"`
+}
+
+// ListMyLLMs 获取当前登录租户在 RAGFlow 中已配置的 LLM 列表（Web API）
+// API: GET /llm/my_llms?include_details=true
+func (c *AuthClient) ListMyLLMs(ctx context.Context, authToken string, includeDetails bool) (map[string]MyLLMFactory, error) {
+	if authToken == "" {
+		return nil, fmt.Errorf("Authorization Token 不能为空")
+	}
+
+	query := url.Values{}
+	if includeDetails {
+		query.Set("include_details", "true")
+	}
+
+	endpoint := "/llm/my_llms"
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+
+	url := c.config.BaseURL + endpoint
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", authToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("查询已配置 LLM 失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result APIResponse[map[string]MyLLMFactory]
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return nil, fmt.Errorf("查询已配置 LLM 失败 (code=%d): %s", result.Code, result.Message)
+	}
+
+	if result.Data == nil {
+		return map[string]MyLLMFactory{}, nil
+	}
+
+	return result.Data, nil
 }

@@ -15,6 +15,47 @@ import (
 	"time"
 )
 
+var ragflowRegisteredChatModels = map[string]struct{}{
+	"qwen-plus":                  {},
+	"qwen-max":                   {},
+	"qwen-turbo":                 {},
+	"qwen-long":                  {},
+	"qwen-flash":                 {},
+	"qwen2.5-72b-instruct":       {},
+	"qwen2.5-32b-instruct":       {},
+	"qwen2.5-14b-instruct-1m":    {},
+	"qwen2.5-14b-instruct":       {},
+	"qwen2.5-7b-instruct-1m":     {},
+	"qwen2.5-7b-instruct":        {},
+	"qwen2.5-3b-instruct":        {},
+	"qwen2.5-1.5b-instruct":      {},
+	"qwen3-235b-a22b-instruct-2507": {},
+	"qwen3-30b-a3b-instruct-2507":    {},
+	"qwen3-32b":                      {},
+	"qwen3-14b":                      {},
+	"qwen3-8b":                       {},
+	"qwen3-4b":                       {},
+	"qwen3-1.7b":                     {},
+	"qwen3-0.6b":                     {},
+	"qwq-plus":                       {},
+	"qvq-max":                        {},
+	"qvq-plus":                       {},
+	"deepseek-r1":                    {},
+	"deepseek-v3":                    {},
+	"deepseek-chat":                  {},
+	"Moonshot-Kimi-K2-Instruct":      {},
+}
+
+// IsRAGFlowRegistered 判断模型是否在 RAGFlow 模型注册白名单中。
+func IsRAGFlowRegistered(modelName string) bool {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return false
+	}
+	_, ok := ragflowRegisteredChatModels[modelName]
+	return ok
+}
+
 // ==================== 配置定义 ====================
 
 // Config DashScope 客户端配置
@@ -191,7 +232,7 @@ func (c *Client) ListChatModels(ctx context.Context) ([]Model, error) {
 	var chatModels []Model
 	for _, m := range models {
 		// 只返回聊天类模型（基于模型名称前缀判断）
-		if isChatModel(m.ModelName) {
+		if isChatModel(m.ModelName) && IsRAGFlowRegistered(m.ModelName) {
 			chatModels = append(chatModels, m)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/usememos/memos/plugin/dashscope"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
 	"github.com/usememos/memos/store"
@@ -42,19 +43,26 @@ func (s *APIV1Service) ListAvailableModels(ctx context.Context, _ *v1pb.ListAvai
 	// 转换为 Proto 格式
 	pbModels := make([]*v1pb.LLMModel, 0, len(models))
 	for _, m := range models {
-		// 构造 model_id：{model_name}@{provider}
-		// DashScope 返回的 OwnedBy 字段可能为空，使用 Tongyi-Qianwen 作为默认提供商
-		provider := m.OwnedBy
-		if provider == "" {
-			provider = "Tongyi-Qianwen"
+		// 当前后端自动配置链路仅支持 Tongyi-Qianwen 提供商。
+		// 避免将 deepseek 等非 Tongyi 模型暴露给前端后导致后续 Assistant 创建失败。
+		if !isTongyiModelName(m.ModelName) {
+			continue
 		}
-		modelID := m.ModelName + "@" + provider
+
+		// 构造 model_id：{model_name}@Tongyi-Qianwen
+		//
+		// 关键修复：DashScope OpenAI 兼容模式返回的 owned_by 字段值固定为 "system"
+		// （OpenAI 协议的通用占位符），这与 RAGFlow 内部的 factory 路由键
+		// "Tongyi-Qianwen" 是完全不同的命名空间，不能直接使用。
+		// 所有通过百炼 DashScope API 获取的模型，其 RAGFlow factory 均为 "Tongyi-Qianwen"。
+		const ragflowFactory = "Tongyi-Qianwen"
+		modelID := m.ModelName + "@" + ragflowFactory
 
 		pbModels = append(pbModels, &v1pb.LLMModel{
 			ModelId:     modelID,
 			ModelName:   m.ModelName,
 			DisplayName: m.DisplayName,
-			Provider:    provider,
+			Provider:    ragflowFactory,
 			Description: m.Description,
 			Status:      m.Status,
 		})
@@ -118,24 +126,37 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 		return nil, status.Errorf(codes.InvalidArgument, "model_id is required")
 	}
 
+	// ==================== 向后兼容修复 ====================
+	// 历史数据或旧客户端可能传入 "xxx@system"（DashScope owned_by 误用），
+	// 统一重写为 "xxx@Tongyi-Qianwen"，与 RAGFlow factory 对齐。
+	modelID := normalizeModelID(req.ModelId)
+
 	slog.Info("SetUserLLMPreference: 开始设置用户 LLM 偏好",
 		slog.Int("userID", int(userID)),
-		slog.String("modelID", req.ModelId))
+		slog.String("rawModelID", req.ModelId),
+		slog.String("normalizedModelID", modelID))
 
 	// 解析 model_id
-	modelName, provider := parseModelID(req.ModelId)
+	modelName, provider := parseModelID(modelID)
 	if modelName == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid model_id format, expected: {model_name}@{provider}")
 	}
+	if provider != "" && provider != "Tongyi-Qianwen" {
+		return nil, status.Errorf(codes.InvalidArgument, "provider %s is not supported, only Tongyi-Qianwen is supported now", provider)
+	}
+	if !isTongyiModelName(modelName) {
+		return nil, status.Errorf(codes.NotFound, "model %s is not supported by Tongyi-Qianwen provider", modelName)
+	}
 
-	// 验证模型是否可用（如果 DashScope 客户端已配置）
-	if s.DashScopeClient != nil {
-		exists := s.DashScopeClient.ModelExists(ctx, modelName)
-		if !exists {
-			slog.Warn("SetUserLLMPreference: 模型不存在或不可用",
-				slog.String("modelName", modelName))
-			return nil, status.Errorf(codes.NotFound, "model %s not found or not available", modelName)
-		}
+	// 验证模型是否在 RAGFlow 注册表白名单中（服务端二次校验）
+	// 与 ListAvailableModels 的过滤逻辑保持一致：
+	// 只有 llm_factories.json 中注册了的模型才能被 RAGFlow TenantLLM 表接受。
+	// 注意：DashScope ModelExists 只验证 API Key 权限，不验证 RAGFlow 注册状态，
+	// 因此此处改为白名单校验而非 DashScope 动态查询。
+	if !dashscope.IsRAGFlowRegistered(modelName) {
+		slog.Warn("SetUserLLMPreference: 模型未在 RAGFlow 注册表中",
+			slog.String("modelName", modelName))
+		return nil, status.Errorf(codes.NotFound, "model %s is not available (not registered in RAGFlow)", modelName)
 	}
 
 	// 获取用户映射
@@ -174,18 +195,21 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 	}
 
 	// 确保 LLM 已配置（通过 Provisioner 自动配置百炼）
-	if !mapping.LLMConfigured && s.RAGFlowProvisioner != nil {
-		if err := s.RAGFlowProvisioner.EnsureLLMConfig(ctx, userID); err != nil {
-			slog.Warn("SetUserLLMPreference: 自动配置 LLM 失败",
+	// 注意：即使 mapping.LLMConfigured=true 也执行一次幂等对账，
+	// 防止历史脏状态（标记已配置但 tenant_llm 缺失）导致后续 Assistant 创建报
+	// "`model_name` xxx doesn't exist"。
+	if s.RAGFlowProvisioner != nil {
+		if err := s.RAGFlowProvisioner.EnsureLLMConfig(ctx, userID, modelID); err != nil {
+			slog.Error("SetUserLLMPreference: 自动配置 LLM 失败",
 				slog.Int("userID", int(userID)),
 				slog.Any("error", err))
-			// 继续执行，LLM 配置失败不阻塞偏好设置
+			return nil, status.Errorf(codes.FailedPrecondition, "failed to configure ragflow llm: %v", err)
 		}
 	}
 
-	// 更新 RAGFlow Assistant 的 LLM 配置
+	// 更新 RAGFlow Assistant 的 LLM 配置（Assistant 已存在时）
 	if mapping.AssistantID != "" && s.RAGFlowProvisioner != nil {
-		if err := s.RAGFlowProvisioner.UpdateUserAssistantLLM(ctx, userID, req.ModelId); err != nil {
+		if err := s.RAGFlowProvisioner.UpdateUserAssistantLLM(ctx, userID, modelID); err != nil {
 			slog.Error("SetUserLLMPreference: 更新 Assistant LLM 失败",
 				slog.Int("userID", int(userID)),
 				slog.String("assistantID", mapping.AssistantID),
@@ -194,11 +218,11 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 		}
 	}
 
-	// 更新数据库中的用户偏好
+	// 更新数据库中的用户偏好（存储已规范化的 model_id）
 	now := time.Now().Unix()
 	if err := s.Store.UpdateRAGFlowUserMapping(ctx, &store.UpdateRAGFlowUserMapping{
 		ID:             mapping.ID,
-		PreferredLLMID: &req.ModelId,
+		PreferredLLMID: &modelID,
 		UpdatedTs:      &now,
 	}); err != nil {
 		slog.Error("SetUserLLMPreference: 更新用户偏好失败",
@@ -209,7 +233,30 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 
 	slog.Info("SetUserLLMPreference: 用户 LLM 偏好设置成功",
 		slog.Int("userID", int(userID)),
-		slog.String("modelID", req.ModelId))
+		slog.String("modelID", modelID))
+
+	// ==================== 补偿创建 Assistant ====================
+	if mapping.AssistantID == "" && s.RAGFlowProvisioner != nil {
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			user, err := s.Store.GetUser(bgCtx, &store.FindUser{ID: &userID})
+			if err != nil || user == nil {
+				slog.Warn("SetUserLLMPreference: 补偿创建 Assistant 时获取用户信息失败",
+					slog.Int("userID", int(userID)))
+				return
+			}
+			slog.Info("SetUserLLMPreference: 触发 Assistant 补偿创建",
+				slog.Int("userID", int(userID)),
+				slog.String("modelID", modelID))
+			if _, _, err := s.RAGFlowProvisioner.EnsureUserResources(bgCtx, userID, user.Username); err != nil {
+				slog.Warn("SetUserLLMPreference: 补偿创建 Assistant 失败",
+					slog.Int("userID", int(userID)),
+					slog.Any("error", err))
+			}
+		}()
+	}
 
 	// 重新查询映射获取最新状态
 	mapping, _ = s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
@@ -222,7 +269,7 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 	}
 
 	return &v1pb.UserLLMPreference{
-		ModelId:       req.ModelId,
+		ModelId:       modelID,
 		ModelName:     modelName,
 		Provider:      provider,
 		LlmConfigured: llmConfigured,
@@ -406,6 +453,28 @@ func (s *APIV1Service) UpdateChatSettings(ctx context.Context, req *v1pb.UpdateC
 }
 
 // ==================== 辅助函数 ====================
+
+// normalizeModelID 将 model_id 中不合法的 provider 修正为 RAGFlow factory 名称
+//
+// 背景：DashScope OpenAI 兼容 API 的 owned_by 字段恒为 "system"，
+// 这是 OpenAI 协议的通用占位符，与 RAGFlow factory "Tongyi-Qianwen" 不同。
+// 此函数将 "@system" 统一重写为 "@Tongyi-Qianwen"，确保下游 RAGFlow 调用正确路由。
+func normalizeModelID(modelID string) string {
+	if strings.HasSuffix(modelID, "@system") {
+		modelName := strings.TrimSuffix(modelID, "@system")
+		return modelName + "@Tongyi-Qianwen"
+	}
+	return modelID
+}
+
+// isTongyiModelName 判断模型名是否属于 Tongyi-Qianwen 体系。
+func isTongyiModelName(modelName string) bool {
+	name := strings.ToLower(strings.TrimSpace(modelName))
+	if name == "" {
+		return false
+	}
+	return strings.HasPrefix(name, "qwen") || strings.HasPrefix(name, "qwq") || strings.HasPrefix(name, "qvq")
+}
 
 // parseModelID 解析 model_id 格式：{model_name}@{provider}
 // 返回 model_name 和 provider，如果格式无效返回空字符串
