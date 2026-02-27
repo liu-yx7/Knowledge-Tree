@@ -355,7 +355,7 @@ func (c *AuthClient) SetLLMAPIKey(ctx context.Context, authToken string, req *Se
 		return fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
-	url := c.config.BaseURL + "/llm/set_api_key"
+	url := c.config.BaseURL + "/v1/llm/set_api_key"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %w", err)
@@ -410,7 +410,7 @@ func (c *AuthClient) UpdateUserSetting(ctx context.Context, authToken string, se
 		return fmt.Errorf("序列化请求体失败: %w", err)
 	}
 
-	url := c.config.BaseURL + "/user/setting"
+	url := c.config.BaseURL + "/v1/user/setting"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("创建请求失败: %w", err)
@@ -456,8 +456,9 @@ type MyLLMModel struct {
 }
 
 // MyLLMFactory RAGFlow /llm/my_llms 返回的工厂分组
+// 注意：RAGFlow 的 tags 字段是逗号分隔的字符串（如 "LLM,TEXT EMBEDDING"），不是数组
 type MyLLMFactory struct {
-	Tags []string     `json:"tags"`
+	Tags string       `json:"tags"`
 	LLM  []MyLLMModel `json:"llm"`
 }
 
@@ -473,7 +474,7 @@ func (c *AuthClient) ListMyLLMs(ctx context.Context, authToken string, includeDe
 		query.Set("include_details", "true")
 	}
 
-	endpoint := "/llm/my_llms"
+	endpoint := "/v1/llm/my_llms"
 	if encoded := query.Encode(); encoded != "" {
 		endpoint += "?" + encoded
 	}

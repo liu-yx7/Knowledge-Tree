@@ -16,28 +16,22 @@ import (
 // MemoSyncer Memo 同步器
 // 职责：将 Memo 内容同步到 RAGFlow Dataset
 type MemoSyncer struct {
-	store         *store.Store
-	ragflowClient *ragflow.Client
-	stateTracker  *StateTracker
+	store        *store.Store
+	stateTracker *StateTracker
 }
 
 // NewMemoSyncer 创建 Memo 同步器
 func NewMemoSyncer(s *store.Store, client *ragflow.Client, tracker *StateTracker) *MemoSyncer {
 	return &MemoSyncer{
-		store:         s,
-		ragflowClient: client,
-		stateTracker:  tracker,
+		store:        s,
+		stateTracker: tracker,
 	}
-}
-
-// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
-func (s *MemoSyncer) SetClient(client *ragflow.Client) {
-	s.ragflowClient = client
 }
 
 // ==================== 同步方法 ====================
 
 // SyncMemo 同步单个 Memo 到 RAGFlow
+// client 参数为 per-user RAGFlow 客户端，避免并发竞态
 // 流程：
 // 1. 获取 Memo 内容
 // 2. 计算内容哈希，检查是否需要同步
@@ -45,7 +39,7 @@ func (s *MemoSyncer) SetClient(client *ragflow.Client) {
 // 4. 上传文档到 RAGFlow
 // 5. 触发解析
 // 6. 更新同步状态
-func (s *MemoSyncer) SyncMemo(ctx context.Context, memoUID string, datasetID string) error {
+func (s *MemoSyncer) SyncMemo(ctx context.Context, memoUID string, datasetID string, client *ragflow.Client) error {
 	// 1. 获取 Memo
 	memo, err := s.store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 	if err != nil {
@@ -83,20 +77,20 @@ func (s *MemoSyncer) SyncMemo(ctx context.Context, memoUID string, datasetID str
 	if syncState != nil && syncState.RAGFlowDocumentID != "" {
 		// 已有文档，需要先删除再重新上传
 		// RAGFlow 不支持直接更新文档内容，只能删除后重新上传
-		if err := s.ragflowClient.DeleteDocuments(ctx, datasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
+		if err := client.DeleteDocuments(ctx, datasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
 			slog.Warn("删除旧文档失败，尝试创建新文档",
 				slog.String("memoUID", memoUID),
 				slog.Any("error", err))
 		}
 	}
 
-	docInfo, err = s.ragflowClient.UploadDocument(ctx, datasetID, doc)
+	docInfo, err = client.UploadDocument(ctx, datasetID, doc)
 	if err != nil {
 		return errors.Wrap(err, "上传文档到 RAGFlow 失败")
 	}
 
 	// 7. 触发解析
-	if err := s.ragflowClient.ParseDocuments(ctx, datasetID, []string{docInfo.ID}); err != nil {
+	if err := client.ParseDocuments(ctx, datasetID, []string{docInfo.ID}); err != nil {
 		slog.Warn("触发文档解析失败，文档已上传但未解析",
 			slog.String("memoUID", memoUID),
 			slog.Any("error", err))
@@ -130,7 +124,7 @@ func (s *MemoSyncer) SyncMemo(ctx context.Context, memoUID string, datasetID str
 }
 
 // DeleteMemoFromRAGFlow 从 RAGFlow 删除 Memo 文档
-func (s *MemoSyncer) DeleteMemoFromRAGFlow(ctx context.Context, memoUID string) error {
+func (s *MemoSyncer) DeleteMemoFromRAGFlow(ctx context.Context, memoUID string, client *ragflow.Client) error {
 	// 获取同步状态
 	syncState, err := s.stateTracker.GetSyncState(ctx, store.ContentTypeMemo, memoUID)
 	if err != nil {
@@ -144,7 +138,7 @@ func (s *MemoSyncer) DeleteMemoFromRAGFlow(ctx context.Context, memoUID string) 
 
 	if syncState.RAGFlowDocumentID != "" && syncState.RAGFlowDatasetID != "" {
 		// 从 RAGFlow 删除文档
-		if err := s.ragflowClient.DeleteDocuments(ctx, syncState.RAGFlowDatasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
+		if err := client.DeleteDocuments(ctx, syncState.RAGFlowDatasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
 			slog.Warn("从 RAGFlow 删除文档失败",
 				slog.String("memoUID", memoUID),
 				slog.Any("error", err))
@@ -164,7 +158,7 @@ func (s *MemoSyncer) DeleteMemoFromRAGFlow(ctx context.Context, memoUID string) 
 // ==================== 批量同步方法 ====================
 
 // SyncPendingMemos 同步所有待处理的 Memo
-func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, datasetIDGetter func(ownerID int32) (string, error), limit int) (int, int, error) {
+func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, resourceGetter func(ownerID int32) (*ragflow.Client, string, error), limit int) (int, int, error) {
 	// 获取待同步的状态列表
 	pendingStates, err := s.stateTracker.ListPendingStates(ctx, limit)
 	if err != nil {
@@ -187,8 +181,8 @@ func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, datasetIDGetter func(
 	failCount := 0
 
 	for _, state := range memoStates {
-		// 获取用户的 Dataset ID
-		datasetID, err := datasetIDGetter(state.OwnerID)
+		// 获取用户的 Client 和 Dataset ID
+		client, datasetID, err := resourceGetter(state.OwnerID)
 		if err != nil {
 			slog.Error("获取用户 Dataset 失败",
 				slog.Int("ownerID", int(state.OwnerID)),
@@ -198,7 +192,7 @@ func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, datasetIDGetter func(
 		}
 
 		// 同步 Memo
-		if err := s.SyncMemo(ctx, state.ContentUID, datasetID); err != nil {
+		if err := s.SyncMemo(ctx, state.ContentUID, datasetID, client); err != nil {
 			slog.Error("同步 Memo 失败",
 				slog.String("memoUID", state.ContentUID),
 				slog.Any("error", err))

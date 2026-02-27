@@ -71,10 +71,10 @@ func NewProvisioner(cfg *Config, s ProvisionerStore) (*Provisioner, error) {
 	}
 
 	return &Provisioner{
-		config:      cfg,
-		authClient:  authClient,
-		store:       s,
-		clientCache: make(map[int32]*Client),
+		config:            cfg,
+		authClient:        authClient,
+		store:             s,
+		clientCache:       make(map[int32]*Client),
 		assistantCreating: make(map[int32]struct{}),
 	}, nil
 }
@@ -92,10 +92,10 @@ func NewProvisionerWithAuthClient(cfg *Config, s ProvisionerStore, authClient *A
 	}
 
 	return &Provisioner{
-		config:      cfg,
-		authClient:  authClient,
-		store:       s,
-		clientCache: make(map[int32]*Client),
+		config:            cfg,
+		authClient:        authClient,
+		store:             s,
+		clientCache:       make(map[int32]*Client),
 		assistantCreating: make(map[int32]struct{}),
 	}, nil
 }
@@ -304,8 +304,8 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 	// ==================== 前置条件：确保 TenantLLM 表有该 LLM 记录 ====================
 
 	// 调用 EnsureLLMConfig 确保百炼 LLM 配置已写入 RAGFlow TenantLLM 表。
-	// 若 DashScopeAPIKey 未配置，此方法会静默跳过。
-	// 若 LLM 已配置（LLMConfigured==true），此方法也会静默跳过（幂等）。
+	// 这是硬性前置条件：DashScopeAPIKey 未配置时返回 error，不降级。
+	// 若 LLM 已配置（LLMConfigured==true），执行幂等对账确保 tenant_llm 完整。
 	if err := p.EnsureLLMConfig(ctx, memosUserID, llmID); err != nil {
 		slog.Warn("ensureAssistant: EnsureLLMConfig 失败，跳过 Assistant 创建",
 			slog.Int("userID", int(memosUserID)),
@@ -592,11 +592,9 @@ func (p *Provisioner) createClient(apiKey string) *Client {
 //
 // 注意：此方法是幂等的，重复调用不会产生副作用。
 func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32, targetModelID string) error {
-	// 检查系统级配置
+	// 检查系统级配置（硬性前置条件，不降级）
 	if p.config.DashScopeAPIKey == "" {
-		slog.Debug("未配置 DashScopeAPIKey，跳过 LLM 自动配置",
-			slog.Int("userID", int(memosUserID)))
-		return nil
+		return fmt.Errorf("DashScopeAPIKey 未配置，无法自动配置 RAGFlow Model Provider（请设置环境变量 DASHSCOPE_API_KEY）")
 	}
 
 	// 查询用户映射

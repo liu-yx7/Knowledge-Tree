@@ -16,23 +16,16 @@ import (
 // AttachmentSyncer 附件同步器
 // 职责：将可解析的附件同步到 RAGFlow Dataset
 type AttachmentSyncer struct {
-	store         *store.Store
-	ragflowClient *ragflow.Client
-	stateTracker  *StateTracker
+	store        *store.Store
+	stateTracker *StateTracker
 }
 
 // NewAttachmentSyncer 创建附件同步器
 func NewAttachmentSyncer(s *store.Store, client *ragflow.Client, tracker *StateTracker) *AttachmentSyncer {
 	return &AttachmentSyncer{
-		store:         s,
-		ragflowClient: client,
-		stateTracker:  tracker,
+		store:        s,
+		stateTracker: tracker,
 	}
-}
-
-// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
-func (s *AttachmentSyncer) SetClient(client *ragflow.Client) {
-	s.ragflowClient = client
 }
 
 // ==================== 可解析附件类型判断 ====================
@@ -67,6 +60,7 @@ func IsParseableAttachment(mimeType string) bool {
 // ==================== 同步方法 ====================
 
 // SyncAttachment 同步单个附件到 RAGFlow
+// client 参数为 per-user RAGFlow 客户端，避免并发竞态
 // 流程：
 // 1. 获取附件信息
 // 2. 检查是否为可解析类型
@@ -74,7 +68,7 @@ func IsParseableAttachment(mimeType string) bool {
 // 4. 上传到 RAGFlow
 // 5. 触发解析
 // 6. 更新同步状态
-func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID string, datasetID string) error {
+func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID string, datasetID string, client *ragflow.Client) error {
 	// 1. 获取附件信息
 	attachment, err := s.store.GetAttachment(ctx, &store.FindAttachment{UID: &attachmentUID})
 	if err != nil {
@@ -136,20 +130,20 @@ func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID str
 	var docInfo *ragflow.DocumentInfo
 	if syncState != nil && syncState.RAGFlowDocumentID != "" {
 		// 已有文档，需要先删除再重新上传
-		if err := s.ragflowClient.DeleteDocuments(ctx, datasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
+		if err := client.DeleteDocuments(ctx, datasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
 			slog.Warn("删除旧附件文档失败，尝试创建新文档",
 				slog.String("attachmentUID", attachmentUID),
 				slog.Any("error", err))
 		}
 	}
 
-	docInfo, err = s.ragflowClient.UploadDocument(ctx, datasetID, doc)
+	docInfo, err = client.UploadDocument(ctx, datasetID, doc)
 	if err != nil {
 		return errors.Wrap(err, "上传附件到 RAGFlow 失败")
 	}
 
 	// 7. 触发解析
-	if err := s.ragflowClient.ParseDocuments(ctx, datasetID, []string{docInfo.ID}); err != nil {
+	if err := client.ParseDocuments(ctx, datasetID, []string{docInfo.ID}); err != nil {
 		slog.Warn("触发附件解析失败，文档已上传但未解析",
 			slog.String("attachmentUID", attachmentUID),
 			slog.Any("error", err))
@@ -181,7 +175,7 @@ func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID str
 }
 
 // DeleteAttachmentFromRAGFlow 从 RAGFlow 删除附件文档
-func (s *AttachmentSyncer) DeleteAttachmentFromRAGFlow(ctx context.Context, attachmentUID string) error {
+func (s *AttachmentSyncer) DeleteAttachmentFromRAGFlow(ctx context.Context, attachmentUID string, client *ragflow.Client) error {
 	syncState, err := s.stateTracker.GetSyncState(ctx, store.ContentTypeAttachment, attachmentUID)
 	if err != nil {
 		return errors.Wrap(err, "获取同步状态失败")
@@ -192,7 +186,7 @@ func (s *AttachmentSyncer) DeleteAttachmentFromRAGFlow(ctx context.Context, atta
 	}
 
 	if syncState.RAGFlowDocumentID != "" && syncState.RAGFlowDatasetID != "" {
-		if err := s.ragflowClient.DeleteDocuments(ctx, syncState.RAGFlowDatasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
+		if err := client.DeleteDocuments(ctx, syncState.RAGFlowDatasetID, []string{syncState.RAGFlowDocumentID}); err != nil {
 			slog.Warn("从 RAGFlow 删除附件文档失败",
 				slog.String("attachmentUID", attachmentUID),
 				slog.Any("error", err))
@@ -210,7 +204,7 @@ func (s *AttachmentSyncer) DeleteAttachmentFromRAGFlow(ctx context.Context, atta
 // ==================== 批量同步方法 ====================
 
 // SyncPendingAttachments 同步所有待处理的附件
-func (s *AttachmentSyncer) SyncPendingAttachments(ctx context.Context, datasetIDGetter func(ownerID int32) (string, error), limit int) (int, int, error) {
+func (s *AttachmentSyncer) SyncPendingAttachments(ctx context.Context, resourceGetter func(ownerID int32) (*ragflow.Client, string, error), limit int) (int, int, error) {
 	pendingStates, err := s.stateTracker.ListPendingStates(ctx, limit)
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "获取待同步状态列表失败")
@@ -232,7 +226,7 @@ func (s *AttachmentSyncer) SyncPendingAttachments(ctx context.Context, datasetID
 	failCount := 0
 
 	for _, state := range attachmentStates {
-		datasetID, err := datasetIDGetter(state.OwnerID)
+		client, datasetID, err := resourceGetter(state.OwnerID)
 		if err != nil {
 			slog.Error("获取用户 Dataset 失败",
 				slog.Int("ownerID", int(state.OwnerID)),
@@ -241,7 +235,7 @@ func (s *AttachmentSyncer) SyncPendingAttachments(ctx context.Context, datasetID
 			continue
 		}
 
-		if err := s.SyncAttachment(ctx, state.ContentUID, datasetID); err != nil {
+		if err := s.SyncAttachment(ctx, state.ContentUID, datasetID, client); err != nil {
 			slog.Error("同步附件失败",
 				slog.String("attachmentUID", state.ContentUID),
 				slog.Any("error", err))

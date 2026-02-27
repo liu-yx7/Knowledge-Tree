@@ -74,6 +74,30 @@ func (t *StateTracker) CreatePendingState(ctx context.Context, contentType store
 	return t.store.UpsertContentSyncState(ctx, state)
 }
 
+// EnsurePendingState 确保内容有同步状态记录，如果不存在则创建 pending 状态
+// 与 CreatePendingState 不同，此方法是非破坏性的：已存在的记录不会被覆盖。
+// 适用于：事件入口持久化、catch-up 扫描补齐历史内容。
+func (t *StateTracker) EnsurePendingState(ctx context.Context, contentType store.ContentType, contentUID string, ownerID int32) error {
+	existing, err := t.GetSyncState(ctx, contentType, contentUID)
+	if err != nil {
+		return errors.Wrap(err, "检查同步状态失败")
+	}
+	if existing != nil {
+		// 已有记录，不覆盖
+		return nil
+	}
+	// 不存在，用安全的 INSERT 创建
+	_, err = t.store.CreateContentSyncState(ctx, &store.ContentSyncState{
+		ContentType:   contentType,
+		ContentUID:    contentUID,
+		OwnerID:       ownerID,
+		RAGFlowStatus: store.RAGFlowSyncStatusPending,
+		ContentHash:   "",
+		RetryCount:    0,
+	})
+	return err
+}
+
 // MarkAsSynced 标记为已同步
 func (t *StateTracker) MarkAsSynced(ctx context.Context, stateID int32, datasetID, documentID string) error {
 	now := time.Now().Unix()

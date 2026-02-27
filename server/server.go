@@ -261,16 +261,27 @@ func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
 		return nil
 	}
 
-	// 读取默认 LLM 模型配置（创建 Chat Assistant 必须）
+	// 读取默认 LLM 模型配置（用户未选择模型时的默认值）
 	defaultLLMID := os.Getenv("RAGFLOW_DEFAULT_LLM_ID")
 	if defaultLLMID == "" {
-		slog.Warn("RAGFLOW_DEFAULT_LLM_ID not configured, AI chat will not work",
-			slog.String("hint", "Set RAGFLOW_DEFAULT_LLM_ID to a valid model, e.g., deepseek-chat@DeepSeek"))
+		defaultLLMID = ragflow.GetDefaultLLMID()
+		slog.Info("RAGFLOW_DEFAULT_LLM_ID not set, using default",
+			slog.String("defaultLLMID", defaultLLMID))
+	}
+
+	// 读取 DashScope API Key（配置 RAGFlow Model Provider 的硬性依赖）
+	dashScopeAPIKey := os.Getenv("DASHSCOPE_API_KEY")
+	if dashScopeAPIKey == "" {
+		slog.Error("DASHSCOPE_API_KEY not configured, RAGFlow Model Provider auto-configuration will fail",
+			slog.String("hint", "Set DASHSCOPE_API_KEY to enable Tongyi-Qianwen model provider in RAGFlow"))
+	} else {
+		slog.Info("DashScope API Key configured, RAGFlow Model Provider auto-configuration enabled")
 	}
 
 	cfg := &ragflow.Config{
-		BaseURL:      baseURL,
-		DefaultLLMID: defaultLLMID,
+		BaseURL:         baseURL,
+		DefaultLLMID:    defaultLLMID,
+		DashScopeAPIKey: dashScopeAPIKey,
 	}
 	cfg.WithDefaults()
 

@@ -118,30 +118,30 @@ func (o *Orchestrator) getUsernameByID(ctx context.Context, userID int32) (strin
 	return user.Username, nil
 }
 
-// ensureUserResourcesAndInjectClient 确保用户资源就绪，并将 per-user Client 注入子模块
-// 返回 DatasetID。如果 Provisioner 不可用，降级到旧逻辑（使用系统级 Client）。
-func (o *Orchestrator) ensureUserResourcesAndInjectClient(ctx context.Context, userID int32) (string, error) {
+// resolveUserResources 确保用户资源就绪，返回 per-user Client 和 DatasetID
+// 不再通过 SetClient 注入共享状态，而是返回 client 供调用方按需传递，避免并发竞态。
+// 如果 Provisioner 不可用，降级返回系统级 Client。
+func (o *Orchestrator) resolveUserResources(ctx context.Context, userID int32) (*ragflow.Client, string, error) {
 	if o.provisioner != nil {
 		username, err := o.getUsernameByID(ctx, userID)
 		if err != nil {
-			return "", err
+			return nil, "", err
 		}
 
 		client, datasetID, err := o.provisioner.EnsureUserResources(ctx, userID, username)
 		if err != nil {
-			return "", errors.Wrap(err, "Provisioner 确保用户资源失败")
+			return nil, "", errors.Wrap(err, "Provisioner 确保用户资源失败")
 		}
 
-		// 注入 per-user Client 到子模块
-		o.memoSyncer.SetClient(client)
-		o.attachmentSyncer.SetClient(client)
-		o.visibilityHandler.SetClient(client)
-
-		return datasetID, nil
+		return client, datasetID, nil
 	}
 
-	// 降级：Provisioner 不可用，使用旧逻辑
-	return o.ensureUserDatasetLegacy(ctx, userID)
+	// 降级：Provisioner 不可用，使用系统级 Client
+	datasetID, err := o.ensureUserDatasetLegacy(ctx, userID)
+	if err != nil {
+		return nil, "", err
+	}
+	return o.ragflowClient, datasetID, nil
 }
 
 // ensureUserDatasetLegacy 旧的 Dataset 创建逻辑（降级模式，使用系统级 Client）
@@ -217,13 +217,29 @@ type SyncEvent struct {
 
 // HandleSyncEvent 处理同步事件
 func (o *Orchestrator) HandleSyncEvent(ctx context.Context, event *SyncEvent) error {
+	slog.Info("收到同步事件",
+		slog.String("eventType", string(event.Type)),
+		slog.String("contentType", string(event.ContentType)),
+		slog.String("contentUID", event.ContentUID),
+		slog.Int("userID", int(event.UserID)))
+
+	// 对于 Create/Update 事件，先持久化 pending 状态，确保事件不丢失
+	// 使用 EnsurePendingState：已存在的记录不会被覆盖（非破坏性）
+	if event.Type == SyncEventCreate || event.Type == SyncEventUpdate {
+		if err := o.stateTracker.EnsurePendingState(ctx, event.ContentType, event.ContentUID, event.UserID); err != nil {
+			slog.Warn("创建 pending 状态失败，继续尝试同步",
+				slog.String("contentUID", event.ContentUID),
+				slog.Any("error", err))
+		}
+	}
+
 	// 检查 RAGFlow 服务健康状态
 	if !o.healthChecker.IsHealthy(ctx) {
-		slog.Warn("RAGFlow 服务不可用，事件将在下次批量同步时处理",
+		slog.Warn("RAGFlow 服务不可用，事件已持久化，将在下次批量同步时处理",
 			slog.String("eventType", string(event.Type)),
 			slog.String("contentType", string(event.ContentType)),
 			slog.String("contentUID", event.ContentUID))
-		return nil // 不返回错误，让事件保持 pending 状态
+		return nil // 事件已持久化为 pending，批量同步会处理
 	}
 
 	switch event.Type {
@@ -238,21 +254,21 @@ func (o *Orchestrator) HandleSyncEvent(ctx context.Context, event *SyncEvent) er
 
 // handleCreateOrUpdate 处理创建或更新事件
 func (o *Orchestrator) handleCreateOrUpdate(ctx context.Context, event *SyncEvent) error {
-	// 通过 Provisioner 确保用户资源就绪，并注入 per-user Client
-	datasetID, err := o.ensureUserResourcesAndInjectClient(ctx, event.UserID)
+	// 通过 Provisioner 确保用户资源就绪，获取 per-user Client
+	client, datasetID, err := o.resolveUserResources(ctx, event.UserID)
 	if err != nil {
 		return errors.Wrap(err, "确保用户 Dataset 失败")
 	}
 
 	switch event.ContentType {
 	case store.ContentTypeMemo:
-		if err := o.memoSyncer.SyncMemo(ctx, event.ContentUID, datasetID); err != nil {
+		if err := o.memoSyncer.SyncMemo(ctx, event.ContentUID, datasetID, client); err != nil {
 			o.healthChecker.RecordFailure(err)
 			return err
 		}
 		o.healthChecker.RecordSuccess()
 	case store.ContentTypeAttachment:
-		if err := o.attachmentSyncer.SyncAttachment(ctx, event.ContentUID, datasetID); err != nil {
+		if err := o.attachmentSyncer.SyncAttachment(ctx, event.ContentUID, datasetID, client); err != nil {
 			o.healthChecker.RecordFailure(err)
 			return err
 		}
@@ -265,22 +281,21 @@ func (o *Orchestrator) handleCreateOrUpdate(ctx context.Context, event *SyncEven
 // handleDelete 处理删除事件
 func (o *Orchestrator) handleDelete(ctx context.Context, event *SyncEvent) error {
 	// 删除操作也需要 per-user Client（从 RAGFlow 删除文档需要认证）
+	client := o.ragflowClient // 默认使用系统级 Client
 	if o.provisioner != nil {
 		username, err := o.getUsernameByID(ctx, event.UserID)
 		if err == nil {
-			client, _, _ := o.provisioner.EnsureUserResources(ctx, event.UserID, username)
-			if client != nil {
-				o.memoSyncer.SetClient(client)
-				o.attachmentSyncer.SetClient(client)
+			if userClient, _, _ := o.provisioner.EnsureUserResources(ctx, event.UserID, username); userClient != nil {
+				client = userClient
 			}
 		}
 	}
 
 	switch event.ContentType {
 	case store.ContentTypeMemo:
-		return o.memoSyncer.DeleteMemoFromRAGFlow(ctx, event.ContentUID)
+		return o.memoSyncer.DeleteMemoFromRAGFlow(ctx, event.ContentUID, client)
 	case store.ContentTypeAttachment:
-		return o.attachmentSyncer.DeleteAttachmentFromRAGFlow(ctx, event.ContentUID)
+		return o.attachmentSyncer.DeleteAttachmentFromRAGFlow(ctx, event.ContentUID, client)
 	}
 	return nil
 }
@@ -289,7 +304,8 @@ func (o *Orchestrator) handleDelete(ctx context.Context, event *SyncEvent) error
 
 // EnsureUserDataset 确保用户有对应的 RAGFlow Dataset（公开接口，兼容旧调用方）
 func (o *Orchestrator) EnsureUserDataset(ctx context.Context, userID int32) (string, error) {
-	return o.ensureUserResourcesAndInjectClient(ctx, userID)
+	_, datasetID, err := o.resolveUserResources(ctx, userID)
+	return datasetID, err
 }
 
 // GetUserDatasetID 获取用户的 Dataset ID
@@ -329,19 +345,22 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 	slog.Info("开始批量同步...")
 	startTime := time.Now()
 
-	// 构建 datasetIDGetter：通过 Provisioner 获取 per-user Client 和 DatasetID
-	datasetIDGetter := func(ownerID int32) (string, error) {
-		return o.ensureUserResourcesAndInjectClient(ctx, ownerID)
+	// 0. 先发现未被追踪的内容，补齐 pending 状态
+	discovered := o.discoverUntrackedContent(ctx)
+
+	// 构建 resourceGetter：通过 Provisioner 获取 per-user Client 和 DatasetID
+	resourceGetter := func(ownerID int32) (*ragflow.Client, string, error) {
+		return o.resolveUserResources(ctx, ownerID)
 	}
 
 	// 1. 同步待处理的 Memo
-	memoSuccess, memoFail, err := o.memoSyncer.SyncPendingMemos(ctx, datasetIDGetter, o.batchSize)
+	memoSuccess, memoFail, err := o.memoSyncer.SyncPendingMemos(ctx, resourceGetter, o.batchSize)
 	if err != nil {
 		slog.Error("批量同步 Memo 失败", slog.Any("error", err))
 	}
 
 	// 2. 同步待处理的附件
-	attachmentSuccess, attachmentFail, err := o.attachmentSyncer.SyncPendingAttachments(ctx, datasetIDGetter, o.batchSize)
+	attachmentSuccess, attachmentFail, err := o.attachmentSyncer.SyncPendingAttachments(ctx, resourceGetter, o.batchSize)
 	if err != nil {
 		slog.Error("批量同步附件失败", slog.Any("error", err))
 	}
@@ -351,6 +370,7 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 
 	duration := time.Since(startTime)
 	slog.Info("批量同步完成",
+		slog.Int("discovered", discovered),
 		slog.Int("memoSuccess", memoSuccess),
 		slog.Int("memoFail", memoFail),
 		slog.Int("attachmentSuccess", attachmentSuccess),
@@ -360,6 +380,55 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 		slog.Duration("duration", duration))
 
 	return nil
+}
+
+// discoverUntrackedContent 扫描系统中没有 sync state 记录的 memo 和 attachment，
+// 为它们创建 pending 状态，确保下一轮批量同步能够处理。
+// 这是一种 catch-up 机制，用于处理在 bug 修复前创建的历史内容。
+func (o *Orchestrator) discoverUntrackedContent(ctx context.Context) int {
+	discovered := 0
+
+	// 扫描 memo
+	normalStatus := store.Normal
+	memos, err := o.store.ListMemos(ctx, &store.FindMemo{
+		RowStatus: &normalStatus,
+	})
+	if err != nil {
+		slog.Error("扫描 memo 失败", slog.Any("error", err))
+	} else {
+		for _, memo := range memos {
+			if err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeMemo, memo.UID, memo.CreatorID); err != nil {
+				slog.Warn("为 memo 创建 pending 状态失败",
+					slog.String("memoUID", memo.UID),
+					slog.Any("error", err))
+			} else {
+				discovered++
+			}
+		}
+	}
+
+	// 扫描 attachment
+	attachments, err := o.store.ListAttachments(ctx, &store.FindAttachment{})
+	if err != nil {
+		slog.Error("扫描 attachment 失败", slog.Any("error", err))
+	} else {
+		for _, att := range attachments {
+			if err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeAttachment, att.UID, att.CreatorID); err != nil {
+				slog.Warn("为 attachment 创建 pending 状态失败",
+					slog.String("attachmentUID", att.UID),
+					slog.Any("error", err))
+			} else {
+				discovered++
+			}
+		}
+	}
+
+	if discovered > 0 {
+		slog.Info("发现未追踪的内容，已创建 pending 状态",
+			slog.Int("discovered", discovered))
+	}
+
+	return discovered
 }
 
 // retryFailedStates 重试失败的状态
@@ -378,7 +447,7 @@ func (o *Orchestrator) retryFailedStates(ctx context.Context) (int, int) {
 	failCount := 0
 
 	for _, state := range retryableStates {
-		datasetID, err := o.ensureUserResourcesAndInjectClient(ctx, state.OwnerID)
+		client, datasetID, err := o.resolveUserResources(ctx, state.OwnerID)
 		if err != nil {
 			slog.Error("获取用户 Dataset 失败（重试）",
 				slog.Int("ownerID", int(state.OwnerID)),
@@ -390,9 +459,9 @@ func (o *Orchestrator) retryFailedStates(ctx context.Context) (int, int) {
 		var syncErr error
 		switch state.ContentType {
 		case store.ContentTypeMemo:
-			syncErr = o.memoSyncer.SyncMemo(ctx, state.ContentUID, datasetID)
+			syncErr = o.memoSyncer.SyncMemo(ctx, state.ContentUID, datasetID, client)
 		case store.ContentTypeAttachment:
-			syncErr = o.attachmentSyncer.SyncAttachment(ctx, state.ContentUID, datasetID)
+			syncErr = o.attachmentSyncer.SyncAttachment(ctx, state.ContentUID, datasetID, client)
 		}
 
 		if syncErr != nil {
@@ -424,30 +493,30 @@ func (o *Orchestrator) HandleVisibilityChange(ctx context.Context, memoUID strin
 		return nil
 	}
 
-	// 获取 Memo 的 owner，以便注入 per-user Client
+	// 获取 Memo 的 owner，以便获取 per-user Client
 	memo, err := o.store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 	if err != nil || memo == nil {
 		return errors.Wrap(err, "获取 Memo 失败")
 	}
 
-	// 注入 per-user Client
+	// 获取 per-user Client
+	client := o.ragflowClient // 默认使用系统级 Client
 	if o.provisioner != nil {
 		username, uErr := o.getUsernameByID(ctx, memo.CreatorID)
 		if uErr == nil {
-			client, _, _ := o.provisioner.EnsureUserResources(ctx, memo.CreatorID, username)
-			if client != nil {
-				o.visibilityHandler.SetClient(client)
+			if userClient, _, _ := o.provisioner.EnsureUserResources(ctx, memo.CreatorID, username); userClient != nil {
+				client = userClient
 			}
 		}
 	}
 
 	// 更新 Memo 的 visibility
-	if err := o.visibilityHandler.HandleVisibilityChange(ctx, memoUID, newVisibility); err != nil {
+	if err := o.visibilityHandler.HandleVisibilityChange(ctx, memoUID, newVisibility, client); err != nil {
 		return err
 	}
 
 	// 更新关联附件的 visibility
-	if err := o.visibilityHandler.HandleAttachmentVisibilityChange(ctx, memoUID, newVisibility); err != nil {
+	if err := o.visibilityHandler.HandleAttachmentVisibilityChange(ctx, memoUID, newVisibility, client); err != nil {
 		slog.Warn("更新附件 visibility 失败", slog.Any("error", err))
 	}
 

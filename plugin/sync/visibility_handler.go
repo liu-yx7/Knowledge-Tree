@@ -15,30 +15,24 @@ import (
 // VisibilityHandler 处理 Memo visibility 变更
 // 职责：当 Memo 的 visibility 变更时，更新 RAGFlow Document 的元数据
 type VisibilityHandler struct {
-	store         *store.Store
-	ragflowClient *ragflow.Client
-	stateTracker  *StateTracker
+	store        *store.Store
+	stateTracker *StateTracker
 }
 
 // NewVisibilityHandler 创建 visibility 处理器
 func NewVisibilityHandler(s *store.Store, client *ragflow.Client, tracker *StateTracker) *VisibilityHandler {
 	return &VisibilityHandler{
-		store:         s,
-		ragflowClient: client,
-		stateTracker:  tracker,
+		store:        s,
+		stateTracker: tracker,
 	}
-}
-
-// SetClient 替换当前使用的 RAGFlow 客户端（用于注入 per-user Client）
-func (h *VisibilityHandler) SetClient(client *ragflow.Client) {
-	h.ragflowClient = client
 }
 
 // ==================== 核心方法 ====================
 
 // HandleVisibilityChange 处理 visibility 变更
+// client 参数为 per-user RAGFlow 客户端，避免并发竞态
 // 当 Memo 从 PUBLIC ↔ PRIVATE 切换时，更新 RAGFlow Document 元数据
-func (h *VisibilityHandler) HandleVisibilityChange(ctx context.Context, memoUID string, newVisibility store.Visibility) error {
+func (h *VisibilityHandler) HandleVisibilityChange(ctx context.Context, memoUID string, newVisibility store.Visibility, client *ragflow.Client) error {
 	// 1. 获取同步状态
 	syncState, err := h.stateTracker.GetSyncState(ctx, store.ContentTypeMemo, memoUID)
 	if err != nil {
@@ -73,7 +67,7 @@ func (h *VisibilityHandler) HandleVisibilityChange(ctx context.Context, memoUID 
 		"visibility": string(newVisibility),
 	}
 
-	_, err = h.ragflowClient.UpdateDocument(ctx, syncState.RAGFlowDatasetID, syncState.RAGFlowDocumentID, &ragflow.UpdateDocumentRequest{
+	_, err = client.UpdateDocument(ctx, syncState.RAGFlowDatasetID, syncState.RAGFlowDocumentID, &ragflow.UpdateDocumentRequest{
 		Metadata: metadata,
 	})
 	if err != nil {
@@ -90,12 +84,12 @@ func (h *VisibilityHandler) HandleVisibilityChange(ctx context.Context, memoUID 
 // ==================== 批量更新方法 ====================
 
 // BatchUpdateVisibility 批量更新多个 Memo 的 visibility
-func (h *VisibilityHandler) BatchUpdateVisibility(ctx context.Context, memoUIDs []string, newVisibility store.Visibility) (int, int, error) {
+func (h *VisibilityHandler) BatchUpdateVisibility(ctx context.Context, memoUIDs []string, newVisibility store.Visibility, client *ragflow.Client) (int, int, error) {
 	successCount := 0
 	failCount := 0
 
 	for _, memoUID := range memoUIDs {
-		if err := h.HandleVisibilityChange(ctx, memoUID, newVisibility); err != nil {
+		if err := h.HandleVisibilityChange(ctx, memoUID, newVisibility, client); err != nil {
 			slog.Error("更新 Memo visibility 失败",
 				slog.String("memoUID", memoUID),
 				slog.Any("error", err))
@@ -170,7 +164,7 @@ func extractMemoUIDFromDocumentName(docName string) string {
 
 // HandleAttachmentVisibilityChange 处理附件关联的 Memo visibility 变更
 // 附件的可见性跟随其关联的 Memo
-func (h *VisibilityHandler) HandleAttachmentVisibilityChange(ctx context.Context, memoUID string, newVisibility store.Visibility) error {
+func (h *VisibilityHandler) HandleAttachmentVisibilityChange(ctx context.Context, memoUID string, newVisibility store.Visibility, client *ragflow.Client) error {
 	// 获取 Memo 关联的所有附件
 	memo, err := h.store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 	if err != nil {
@@ -207,7 +201,7 @@ func (h *VisibilityHandler) HandleAttachmentVisibilityChange(ctx context.Context
 			"visibility": string(newVisibility),
 		}
 
-		_, err = h.ragflowClient.UpdateDocument(ctx, syncState.RAGFlowDatasetID, syncState.RAGFlowDocumentID, &ragflow.UpdateDocumentRequest{
+		_, err = client.UpdateDocument(ctx, syncState.RAGFlowDatasetID, syncState.RAGFlowDocumentID, &ragflow.UpdateDocumentRequest{
 			Metadata: metadata,
 		})
 		if err != nil {

@@ -83,6 +83,9 @@ func (r *Runner) Run(ctx context.Context) {
 		slog.Duration("interval", r.syncInterval),
 		slog.Int("batchSize", r.batchSize))
 
+	// 启动时重置熔断器，清除历史失败状态
+	r.orchestrator.GetHealthChecker().ForceClose()
+
 	// 启动时执行一次完整同步
 	r.runSyncCycle(ctx)
 
@@ -170,6 +173,10 @@ func (r *Runner) OnMemoCreated(ctx context.Context, memo *store.Memo) {
 	go func() {
 		defer r.wg.Done()
 
+		// 使用独立 context，避免请求 ctx 取消导致同步失败
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		event := &pluginsync.SyncEvent{
 			Type:        pluginsync.SyncEventCreate,
 			ContentType: store.ContentTypeMemo,
@@ -178,7 +185,7 @@ func (r *Runner) OnMemoCreated(ctx context.Context, memo *store.Memo) {
 			Timestamp:   time.Now(),
 		}
 
-		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
 			slog.Error("处理 Memo 创建事件失败",
 				slog.String("memoUID", memo.UID),
 				slog.Any("error", err))
@@ -196,6 +203,9 @@ func (r *Runner) OnMemoUpdated(ctx context.Context, memo *store.Memo) {
 	go func() {
 		defer r.wg.Done()
 
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		event := &pluginsync.SyncEvent{
 			Type:        pluginsync.SyncEventUpdate,
 			ContentType: store.ContentTypeMemo,
@@ -204,7 +214,7 @@ func (r *Runner) OnMemoUpdated(ctx context.Context, memo *store.Memo) {
 			Timestamp:   time.Now(),
 		}
 
-		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
 			slog.Error("处理 Memo 更新事件失败",
 				slog.String("memoUID", memo.UID),
 				slog.Any("error", err))
@@ -222,6 +232,9 @@ func (r *Runner) OnMemoDeleted(ctx context.Context, memoUID string) {
 	go func() {
 		defer r.wg.Done()
 
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		event := &pluginsync.SyncEvent{
 			Type:        pluginsync.SyncEventDelete,
 			ContentType: store.ContentTypeMemo,
@@ -229,7 +242,7 @@ func (r *Runner) OnMemoDeleted(ctx context.Context, memoUID string) {
 			Timestamp:   time.Now(),
 		}
 
-		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
 			slog.Error("处理 Memo 删除事件失败",
 				slog.String("memoUID", memoUID),
 				slog.Any("error", err))
@@ -247,7 +260,10 @@ func (r *Runner) OnMemoVisibilityChanged(ctx context.Context, memoUID string, vi
 	go func() {
 		defer r.wg.Done()
 
-		if err := r.orchestrator.HandleVisibilityChange(ctx, memoUID, visibility); err != nil {
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := r.orchestrator.HandleVisibilityChange(syncCtx, memoUID, visibility); err != nil {
 			slog.Error("处理 Memo 可见性变更事件失败",
 				slog.String("memoUID", memoUID),
 				slog.Any("error", err))
@@ -265,6 +281,9 @@ func (r *Runner) OnAttachmentCreated(ctx context.Context, attachment *store.Atta
 	go func() {
 		defer r.wg.Done()
 
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		event := &pluginsync.SyncEvent{
 			Type:        pluginsync.SyncEventCreate,
 			ContentType: store.ContentTypeAttachment,
@@ -273,7 +292,7 @@ func (r *Runner) OnAttachmentCreated(ctx context.Context, attachment *store.Atta
 			Timestamp:   time.Now(),
 		}
 
-		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
 			slog.Error("处理附件创建事件失败",
 				slog.String("attachmentUID", attachment.UID),
 				slog.Any("error", err))
@@ -291,6 +310,9 @@ func (r *Runner) OnAttachmentDeleted(ctx context.Context, attachmentUID string) 
 	go func() {
 		defer r.wg.Done()
 
+		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		event := &pluginsync.SyncEvent{
 			Type:        pluginsync.SyncEventDelete,
 			ContentType: store.ContentTypeAttachment,
@@ -298,7 +320,7 @@ func (r *Runner) OnAttachmentDeleted(ctx context.Context, attachmentUID string) 
 			Timestamp:   time.Now(),
 		}
 
-		if err := r.orchestrator.HandleSyncEvent(ctx, event); err != nil {
+		if err := r.orchestrator.HandleSyncEvent(syncCtx, event); err != nil {
 			slog.Error("处理附件删除事件失败",
 				slog.String("attachmentUID", attachmentUID),
 				slog.Any("error", err))
@@ -316,7 +338,10 @@ func (r *Runner) OnUserDeleted(ctx context.Context, userID int32) {
 	go func() {
 		defer r.wg.Done()
 
-		if err := r.orchestrator.HandleUserDeletion(ctx, userID); err != nil {
+		syncCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		if err := r.orchestrator.HandleUserDeletion(syncCtx, userID); err != nil {
 			slog.Error("处理用户删除事件失败",
 				slog.Int("userID", int(userID)),
 				slog.Any("error", err))
