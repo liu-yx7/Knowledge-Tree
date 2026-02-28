@@ -692,6 +692,37 @@ func (p *Provisioner) UpdateUserAssistantLLM(ctx context.Context, memosUserID in
 	return nil
 }
 
+// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到其 Dataset。
+// 如果 Assistant 已经绑定（dataset_ids 非空），则跳过。
+// 在文档同步完成后调用，因为 RAGFlow 要求 dataset 的 chunk_num > 0。
+func (p *Provisioner) EnsureAssistantDatasetBinding(ctx context.Context, memosUserID int32) error {
+	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &memosUserID,
+	})
+	if err != nil {
+		return fmt.Errorf("查询用户映射失败: %w", err)
+	}
+	if mapping == nil || mapping.AssistantID == "" || mapping.DatasetID == "" {
+		return nil // 尚未创建 Assistant 或 Dataset，跳过
+	}
+	if mapping.APIKey == "" {
+		return fmt.Errorf("用户 API Key 不存在")
+	}
+
+	// 调用 RAGFlow API 绑定 Dataset 到 Assistant
+	client := p.createClient(mapping.APIKey)
+	err = client.UpdateAssistantDatasets(ctx, mapping.AssistantID, []string{mapping.DatasetID})
+	if err != nil {
+		return fmt.Errorf("绑定 Assistant ↔ Dataset 失败: %w", err)
+	}
+
+	slog.Info("成功绑定 Assistant ↔ Dataset",
+		slog.Int("userID", int(memosUserID)),
+		slog.String("assistantID", mapping.AssistantID),
+		slog.String("datasetID", mapping.DatasetID))
+	return nil
+}
+
 // UpdateUserAssistantDatasets 更新用户 Assistant 关联的 Dataset 列表
 // 用于用户切换 Dataset 时同步更新 RAGFlow Assistant
 func (p *Provisioner) UpdateUserAssistantDatasets(ctx context.Context, memosUserID int32, datasetIDs []string) error {

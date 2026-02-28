@@ -26,6 +26,9 @@ type ResourceProvisioner interface {
 	EnsureUserResources(ctx context.Context, memosUserID int32, username string) (*ragflow.Client, string, error)
 	// GetUserDatasetID 获取用户的 Dataset ID，不存在则自动创建
 	GetUserDatasetID(ctx context.Context, memosUserID int32, username string) (string, error)
+	// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到其 Dataset
+	// 在文档上传并解析完成后调用，因为 RAGFlow 要求 dataset 有 chunk_num > 0
+	EnsureAssistantDatasetBinding(ctx context.Context, memosUserID int32) error
 }
 
 // Orchestrator 同步编排器
@@ -368,6 +371,13 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 	// 3. 重试失败的记录
 	retrySuccess, retryFail := o.retryFailedStates(ctx)
 
+	// 4. 如果有成功同步的内容，尝试绑定 Assistant ↔ Dataset
+	totalSynced := memoSuccess + attachmentSuccess + retrySuccess
+	bindSuccess, bindFail := 0, 0
+	if totalSynced > 0 {
+		bindSuccess, bindFail = o.ensureAssistantDatasetBindings(ctx)
+	}
+
 	duration := time.Since(startTime)
 	slog.Info("批量同步完成",
 		slog.Int("discovered", discovered),
@@ -377,9 +387,50 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 		slog.Int("attachmentFail", attachmentFail),
 		slog.Int("retrySuccess", retrySuccess),
 		slog.Int("retryFail", retryFail),
+		slog.Int("bindSuccess", bindSuccess),
+		slog.Int("bindFail", bindFail),
 		slog.Duration("duration", duration))
 
 	return nil
+}
+
+// ensureAssistantDatasetBindings 遍历所有有 AssistantID 的用户，
+// 确保 Assistant 已绑定到对应的 Dataset。
+// 只有在文档已上传并开始解析后才能成功（RAGFlow 要求 chunk_num > 0）。
+func (o *Orchestrator) ensureAssistantDatasetBindings(ctx context.Context) (int, int) {
+	if o.provisioner == nil {
+		return 0, 0
+	}
+
+	// 获取所有同步状态中涉及的不同用户 ID
+	syncedStatus := store.RAGFlowSyncStatusSynced
+	states, err := o.store.ListContentSyncStates(ctx, &store.FindContentSyncState{
+		RAGFlowStatus: &syncedStatus,
+	})
+	if err != nil {
+		slog.Error("查询已同步状态失败", slog.Any("error", err))
+		return 0, 0
+	}
+
+	// 收集不同的 ownerID
+	ownerSet := make(map[int32]struct{})
+	for _, s := range states {
+		ownerSet[s.OwnerID] = struct{}{}
+	}
+
+	successCount, failCount := 0, 0
+	for ownerID := range ownerSet {
+		if err := o.provisioner.EnsureAssistantDatasetBinding(ctx, ownerID); err != nil {
+			slog.Warn("绑定 Assistant ↔ Dataset 失败",
+				slog.Int("ownerID", int(ownerID)),
+				slog.Any("error", err))
+			failCount++
+		} else {
+			successCount++
+		}
+	}
+
+	return successCount, failCount
 }
 
 // discoverUntrackedContent 扫描系统中没有 sync state 记录的 memo 和 attachment，
