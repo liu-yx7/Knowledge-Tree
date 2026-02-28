@@ -43,12 +43,6 @@ func (s *APIV1Service) ListAvailableModels(ctx context.Context, _ *v1pb.ListAvai
 	// 转换为 Proto 格式
 	pbModels := make([]*v1pb.LLMModel, 0, len(models))
 	for _, m := range models {
-		// 当前后端自动配置链路仅支持 Tongyi-Qianwen 提供商。
-		// 避免将 deepseek 等非 Tongyi 模型暴露给前端后导致后续 Assistant 创建失败。
-		if !isTongyiModelName(m.ModelName) {
-			continue
-		}
-
 		// 构造 model_id：{model_name}@Tongyi-Qianwen
 		//
 		// 关键修复：DashScope OpenAI 兼容模式返回的 owned_by 字段值固定为 "system"
@@ -141,12 +135,6 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 	if modelName == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid model_id format, expected: {model_name}@{provider}")
 	}
-	if provider != "" && provider != "Tongyi-Qianwen" {
-		return nil, status.Errorf(codes.InvalidArgument, "provider %s is not supported, only Tongyi-Qianwen is supported now", provider)
-	}
-	if !isTongyiModelName(modelName) {
-		return nil, status.Errorf(codes.NotFound, "model %s is not supported by Tongyi-Qianwen provider", modelName)
-	}
 
 	// 验证模型是否在 RAGFlow 注册表白名单中（服务端二次校验）
 	// 与 ListAvailableModels 的过滤逻辑保持一致：
@@ -195,15 +183,12 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 	}
 
 	// 确保 LLM 已配置（通过 Provisioner 自动配置百炼）
-	// 注意：即使 mapping.LLMConfigured=true 也执行一次幂等对账，
-	// 防止历史脏状态（标记已配置但 tenant_llm 缺失）导致后续 Assistant 创建报
-	// "`model_name` xxx doesn't exist"。
-	if s.RAGFlowProvisioner != nil {
-		if err := s.RAGFlowProvisioner.EnsureLLMConfig(ctx, userID, modelID); err != nil {
-			slog.Error("SetUserLLMPreference: 自动配置 LLM 失败",
+	if !mapping.LLMConfigured && s.RAGFlowProvisioner != nil {
+		if err := s.RAGFlowProvisioner.EnsureLLMConfig(ctx, userID); err != nil {
+			slog.Warn("SetUserLLMPreference: 自动配置 LLM 失败",
 				slog.Int("userID", int(userID)),
 				slog.Any("error", err))
-			return nil, status.Errorf(codes.FailedPrecondition, "failed to configure ragflow llm: %v", err)
+			// 继续执行，LLM 配置失败不阻塞偏好设置
 		}
 	}
 
@@ -238,10 +223,7 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 	// ==================== 补偿创建 Assistant ====================
 	if mapping.AssistantID == "" && s.RAGFlowProvisioner != nil {
 		go func() {
-			bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-
-			user, err := s.Store.GetUser(bgCtx, &store.FindUser{ID: &userID})
+			user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
 			if err != nil || user == nil {
 				slog.Warn("SetUserLLMPreference: 补偿创建 Assistant 时获取用户信息失败",
 					slog.Int("userID", int(userID)))
@@ -250,7 +232,7 @@ func (s *APIV1Service) SetUserLLMPreference(ctx context.Context, req *v1pb.SetUs
 			slog.Info("SetUserLLMPreference: 触发 Assistant 补偿创建",
 				slog.Int("userID", int(userID)),
 				slog.String("modelID", modelID))
-			if _, _, err := s.RAGFlowProvisioner.EnsureUserResources(bgCtx, userID, user.Username); err != nil {
+			if _, _, err := s.RAGFlowProvisioner.EnsureUserResources(ctx, userID, user.Username); err != nil {
 				slog.Warn("SetUserLLMPreference: 补偿创建 Assistant 失败",
 					slog.Int("userID", int(userID)),
 					slog.Any("error", err))
@@ -465,15 +447,6 @@ func normalizeModelID(modelID string) string {
 		return modelName + "@Tongyi-Qianwen"
 	}
 	return modelID
-}
-
-// isTongyiModelName 判断模型名是否属于 Tongyi-Qianwen 体系。
-func isTongyiModelName(modelName string) bool {
-	name := strings.ToLower(strings.TrimSpace(modelName))
-	if name == "" {
-		return false
-	}
-	return strings.HasPrefix(name, "qwen") || strings.HasPrefix(name, "qwq") || strings.HasPrefix(name, "qvq")
 }
 
 // parseModelID 解析 model_id 格式：{model_name}@{provider}

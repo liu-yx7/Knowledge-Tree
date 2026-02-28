@@ -226,7 +226,7 @@ func (o *Orchestrator) HandleSyncEvent(ctx context.Context, event *SyncEvent) er
 	// 对于 Create/Update 事件，先持久化 pending 状态，确保事件不丢失
 	// 使用 EnsurePendingState：已存在的记录不会被覆盖（非破坏性）
 	if event.Type == SyncEventCreate || event.Type == SyncEventUpdate {
-		if err := o.stateTracker.EnsurePendingState(ctx, event.ContentType, event.ContentUID, event.UserID); err != nil {
+		if _, err := o.stateTracker.EnsurePendingState(ctx, event.ContentType, event.ContentUID, event.UserID); err != nil {
 			slog.Warn("创建 pending 状态失败，继续尝试同步",
 				slog.String("contentUID", event.ContentUID),
 				slog.Any("error", err))
@@ -383,12 +383,12 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 }
 
 // discoverUntrackedContent 扫描系统中没有 sync state 记录的 memo 和 attachment，
-// 为它们创建 pending 状态，确保下一轮批量同步能够处理。
-// 这是一种 catch-up 机制，用于处理在 bug 修复前创建的历史内容。
+// 为它们创建 pending 状态，并将已有的 failed/skipped 状态重置为 pending。
+// 这是一种 catch-up 机制，确保所有内容最终都能被同步到 RAGFlow。
 func (o *Orchestrator) discoverUntrackedContent(ctx context.Context) int {
-	discovered := 0
+	newlyCreated := 0
 
-	// 扫描 memo
+	// 1. 扫描未追踪的 memo（没有 sync state 记录的）
 	normalStatus := store.Normal
 	memos, err := o.store.ListMemos(ctx, &store.FindMemo{
 		RowStatus: &normalStatus,
@@ -397,38 +397,48 @@ func (o *Orchestrator) discoverUntrackedContent(ctx context.Context) int {
 		slog.Error("扫描 memo 失败", slog.Any("error", err))
 	} else {
 		for _, memo := range memos {
-			if err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeMemo, memo.UID, memo.CreatorID); err != nil {
+			created, err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeMemo, memo.UID, memo.CreatorID)
+			if err != nil {
 				slog.Warn("为 memo 创建 pending 状态失败",
 					slog.String("memoUID", memo.UID),
 					slog.Any("error", err))
-			} else {
-				discovered++
+			} else if created {
+				newlyCreated++
 			}
 		}
 	}
 
-	// 扫描 attachment
+	// 2. 扫描未追踪的 attachment
 	attachments, err := o.store.ListAttachments(ctx, &store.FindAttachment{})
 	if err != nil {
 		slog.Error("扫描 attachment 失败", slog.Any("error", err))
 	} else {
 		for _, att := range attachments {
-			if err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeAttachment, att.UID, att.CreatorID); err != nil {
+			created, err := o.stateTracker.EnsurePendingState(ctx, store.ContentTypeAttachment, att.UID, att.CreatorID)
+			if err != nil {
 				slog.Warn("为 attachment 创建 pending 状态失败",
 					slog.String("attachmentUID", att.UID),
 					slog.Any("error", err))
-			} else {
-				discovered++
+			} else if created {
+				newlyCreated++
 			}
 		}
 	}
 
-	if discovered > 0 {
-		slog.Info("发现未追踪的内容，已创建 pending 状态",
-			slog.Int("discovered", discovered))
+	// 3. 将已有的 failed/skipped 状态重置为 pending
+	resetCount, err := o.stateTracker.ResetNonPendingStates(ctx)
+	if err != nil {
+		slog.Error("重置 failed/skipped 状态失败", slog.Any("error", err))
 	}
 
-	return discovered
+	totalRecovered := newlyCreated + resetCount
+	if totalRecovered > 0 {
+		slog.Info("内容同步状态恢复完成",
+			slog.Int("newlyCreated", newlyCreated),
+			slog.Int("resetFromFailedOrSkipped", resetCount))
+	}
+
+	return totalRecovered
 }
 
 // retryFailedStates 重试失败的状态

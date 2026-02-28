@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
@@ -77,14 +78,15 @@ func (t *StateTracker) CreatePendingState(ctx context.Context, contentType store
 // EnsurePendingState 确保内容有同步状态记录，如果不存在则创建 pending 状态
 // 与 CreatePendingState 不同，此方法是非破坏性的：已存在的记录不会被覆盖。
 // 适用于：事件入口持久化、catch-up 扫描补齐历史内容。
-func (t *StateTracker) EnsurePendingState(ctx context.Context, contentType store.ContentType, contentUID string, ownerID int32) error {
+// 返回值：created 表示是否新建了记录（true = 新建，false = 已存在）
+func (t *StateTracker) EnsurePendingState(ctx context.Context, contentType store.ContentType, contentUID string, ownerID int32) (created bool, err error) {
 	existing, err := t.GetSyncState(ctx, contentType, contentUID)
 	if err != nil {
-		return errors.Wrap(err, "检查同步状态失败")
+		return false, errors.Wrap(err, "检查同步状态失败")
 	}
 	if existing != nil {
 		// 已有记录，不覆盖
-		return nil
+		return false, nil
 	}
 	// 不存在，用安全的 INSERT 创建
 	_, err = t.store.CreateContentSyncState(ctx, &store.ContentSyncState{
@@ -95,7 +97,43 @@ func (t *StateTracker) EnsurePendingState(ctx context.Context, contentType store
 		ContentHash:   "",
 		RetryCount:    0,
 	})
-	return err
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ResetNonPendingStates 将所有 failed/skipped 状态重置为 pending，以便重新同步
+// 返回被重置的记录数
+func (t *StateTracker) ResetNonPendingStates(ctx context.Context) (int, error) {
+	failedStatus := store.RAGFlowSyncStatusFailed
+	failedStates, err := t.store.ListContentSyncStates(ctx, &store.FindContentSyncState{
+		RAGFlowStatus: &failedStatus,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "查询 failed 状态失败")
+	}
+
+	skippedStatus := store.RAGFlowSyncStatusSkipped
+	skippedStates, err := t.store.ListContentSyncStates(ctx, &store.FindContentSyncState{
+		RAGFlowStatus: &skippedStatus,
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "查询 skipped 状态失败")
+	}
+
+	resetCount := 0
+	allStates := append(failedStates, skippedStates...)
+	for _, state := range allStates {
+		if err := t.ResetForResync(ctx, state.ID, state.ContentHash); err != nil {
+			slog.Warn("重置同步状态失败",
+				slog.Int("stateID", int(state.ID)),
+				slog.Any("error", err))
+			continue
+		}
+		resetCount++
+	}
+	return resetCount, nil
 }
 
 // MarkAsSynced 标记为已同步

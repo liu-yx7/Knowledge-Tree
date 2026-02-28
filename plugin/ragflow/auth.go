@@ -392,6 +392,71 @@ func (c *AuthClient) SetLLMAPIKey(ctx context.Context, authToken string, req *Se
 	return nil
 }
 
+// SetTenantInfo 设置租户默认模型配置（Web API，需要登录态）
+// API: POST /v1/user/set_tenant_info
+// 在配置完 LLM 提供商后，需要调用此接口设置租户的默认模型（LLM、Embedding、ASR、VLM 等）
+//
+// 参数:
+//   - ctx: 上下文
+//   - authToken: 登录返回的 Authorization Token
+//   - tenantID: 租户 ID（等于 RAGFlow 用户 ID）
+//   - models: 模型配置，必须包含 llm_id、embd_id、asr_id、img2txt_id
+func (c *AuthClient) SetTenantInfo(ctx context.Context, authToken string, tenantID string, models map[string]string) error {
+	if authToken == "" {
+		return fmt.Errorf("Authorization Token 不能为空")
+	}
+	if tenantID == "" {
+		return fmt.Errorf("Tenant ID 不能为空")
+	}
+
+	// 将 tenant_id 加入请求体
+	payload := make(map[string]string, len(models)+1)
+	for k, v := range models {
+		payload[k] = v
+	}
+	payload["tenant_id"] = tenantID
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("序列化请求体失败: %w", err)
+	}
+
+	url := c.config.BaseURL + "/v1/user/set_tenant_info"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+
+	httpReq.Header.Set("Authorization", authToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("读取响应失败: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("设置租户默认模型失败 (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var result APIResponse[any]
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
+		return fmt.Errorf("解析响应失败: %w", err)
+	}
+
+	if result.Code != 0 {
+		return fmt.Errorf("设置租户默认模型失败 (code=%d): %s", result.Code, result.Message)
+	}
+
+	return nil
+}
+
 // UpdateUserSetting 更新用户设置（Web API，需要登录态）
 // API: POST /user/setting
 // 主要用于设置用户默认 LLM 模型

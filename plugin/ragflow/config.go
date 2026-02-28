@@ -21,6 +21,16 @@ var DefaultLLMModels = []string{
 // DefaultLLMProvider 默认 LLM 提供商（与 EnsureLLMConfig 配置的一致）
 const DefaultLLMProvider = "Tongyi-Qianwen"
 
+// 默认模型 ID（Tongyi-Qianwen 系列，格式：model_name@provider）
+// 用于 SetTenantInfo 设置用户的默认模型
+const (
+	DefaultEmbeddingModel  = "text-embedding-v4@Tongyi-Qianwen"
+	DefaultASRModel        = "qwen3-asr-flash@Tongyi-Qianwen"
+	DefaultImage2TextModel = "qwen-vl-plus@Tongyi-Qianwen"
+	DefaultRerankModel     = "gte-rerank@Tongyi-Qianwen"
+	DefaultTTSModel        = "sambert-zhide-v1@Tongyi-Qianwen"
+)
+
 // GetDefaultLLMID 获取默认 LLM 模型 ID
 // 优先级：环境变量 > 硬编码默认值
 func GetDefaultLLMID() string {

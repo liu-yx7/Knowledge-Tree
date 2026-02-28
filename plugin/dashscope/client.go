@@ -15,47 +15,6 @@ import (
 	"time"
 )
 
-var ragflowRegisteredChatModels = map[string]struct{}{
-	"qwen-plus":                     {},
-	"qwen-max":                      {},
-	"qwen-turbo":                    {},
-	"qwen-long":                     {},
-	"qwen-flash":                    {},
-	"qwen2.5-72b-instruct":          {},
-	"qwen2.5-32b-instruct":          {},
-	"qwen2.5-14b-instruct-1m":       {},
-	"qwen2.5-14b-instruct":          {},
-	"qwen2.5-7b-instruct-1m":        {},
-	"qwen2.5-7b-instruct":           {},
-	"qwen2.5-3b-instruct":           {},
-	"qwen2.5-1.5b-instruct":         {},
-	"qwen3-235b-a22b-instruct-2507": {},
-	"qwen3-30b-a3b-instruct-2507":   {},
-	"qwen3-32b":                     {},
-	"qwen3-14b":                     {},
-	"qwen3-8b":                      {},
-	"qwen3-4b":                      {},
-	"qwen3-1.7b":                    {},
-	"qwen3-0.6b":                    {},
-	"qwq-plus":                      {},
-	"qvq-max":                       {},
-	"qvq-plus":                      {},
-	"deepseek-r1":                   {},
-	"deepseek-v3":                   {},
-	"deepseek-chat":                 {},
-	"Moonshot-Kimi-K2-Instruct":     {},
-}
-
-// IsRAGFlowRegistered 判断模型是否在 RAGFlow 模型注册白名单中。
-func IsRAGFlowRegistered(modelName string) bool {
-	modelName = strings.TrimSpace(modelName)
-	if modelName == "" {
-		return false
-	}
-	_, ok := ragflowRegisteredChatModels[modelName]
-	return ok
-}
-
 // ==================== 配置定义 ====================
 
 // Config DashScope 客户端配置
@@ -185,6 +144,91 @@ func NewClient(cfg *Config) (*Client, error) {
 
 // ==================== 模型列表 ====================
 
+// ragflowRegisteredChatModels 是 RAGFlow llm_factories.json 中
+// Tongyi-Qianwen 工厂下已注册的 chat 类模型精确名称集合。
+//
+// 设计约束：
+//   - ListAvailableModels 只能暴露此集合内的模型，确保用户选择的任何模型
+//     在 RAGFlow TenantLLM 表中都有对应记录，避免创建 Assistant 时报
+//     "`model_name` xxx doesn't exist"。
+//   - DashScope API 可能返回更多模型（新上线但 RAGFlow 尚未注册），
+//     这些模型通过此白名单被屏蔽，直到 llm_factories.json 补充后同步更新此处。
+//
+// 维护说明：
+//
+//	当 ragflow/conf/llm_factories.json 的 Tongyi-Qianwen.llm 新增 chat 模型时，
+//	同步在此集合追加对应模型名。
+var ragflowRegisteredChatModels = map[string]struct{}{
+	// ── Moonshot（通过百炼托管）──
+	"Moonshot-Kimi-K2-Instruct": {},
+	// ── DeepSeek 系列 ──
+	"deepseek-v3.2":                 {},
+	"deepseek-r1":                   {},
+	"deepseek-v3":                   {},
+	"deepseek-r1-distill-qwen-1.5b": {},
+	"deepseek-r1-distill-qwen-7b":   {},
+	"deepseek-r1-distill-qwen-14b":  {},
+	"deepseek-r1-distill-qwen-32b":  {},
+	"deepseek-r1-distill-llama-8b":  {},
+	"deepseek-r1-distill-llama-70b": {},
+	// ── QwQ 系列 ──
+	"qwq-32b":         {},
+	"qwq-plus":        {},
+	"qwq-plus-latest": {},
+	// ── Qwen Flash 系列 ──
+	"qwen-flash":            {},
+	"qwen-flash-2025-07-28": {},
+	// ── Qwen Plus 系列 ──
+	"qwen-plus":            {},
+	"qwen-plus-latest":     {},
+	"qwen-plus-2025-04-28": {},
+	"qwen-plus-2025-07-14": {},
+	"qwen-plus-2025-07-28": {},
+	// ── Qwen Max 系列 ──
+	"qwen-max": {},
+	// ── Qwen Turbo 系列 ──
+	"qwen-turbo":            {},
+	"qwen-turbo-latest":     {},
+	"qwen-turbo-2025-04-28": {},
+	// ── Qwen Long ──
+	"qwen-long": {},
+	// ── Qwen3 Max ──
+	"qwen3-max": {},
+	// ── Qwen3 235B ──
+	"qwen3-235b-a22b":               {},
+	"qwen3-235b-a22b-instruct-2507": {},
+	"qwen3-235b-a22b-thinking-2507": {},
+	// ── Qwen3 30B ──
+	"qwen3-30b-a3b":               {},
+	"qwen3-30b-a3b-instruct-2507": {},
+	"qwen3-30b-a3b-thinking-2507": {},
+	// ── Qwen3 Next 80B ──
+	"qwen3-next-80b-a3b-instruct": {},
+	"qwen3-next-80b-a3b-thinking": {},
+	// ── Qwen3 小尺寸系列 ──
+	"qwen3-0.6b": {},
+	"qwen3-1.7b": {},
+	"qwen3-4b":   {},
+	"qwen3-8b":   {},
+	"qwen3-14b":  {},
+	"qwen3-32b":  {},
+	// ── 深度研究 ──
+	"qianwen-deepresearch-30b-a3b-131k": {},
+}
+
+// isRAGFlowRegistered 检查模型是否已在 RAGFlow Tongyi-Qianwen 工厂中注册
+// 只有注册过的模型才能被 RAGFlow TenantLLM 表接受，进而用于创建 Assistant
+func isRAGFlowRegistered(modelName string) bool {
+	_, ok := ragflowRegisteredChatModels[modelName]
+	return ok
+}
+
+// IsRAGFlowRegistered 是 isRAGFlowRegistered 的导出版本，供外部包使用
+// （如 server/router/api/v1 的 SetUserLLMPreference 服务端校验）
+func IsRAGFlowRegistered(modelName string) bool {
+	return isRAGFlowRegistered(modelName)
+}
+
 // ListModels 获取可用模型列表（带缓存）
 // 优先返回缓存数据，缓存过期后自动刷新
 func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
@@ -222,7 +266,10 @@ func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
 }
 
 // ListChatModels 获取可用的聊天模型列表
-// 过滤规则：只返回文本对话类模型（qwen-*, deepseek-*, glm-*, kimi-* 等）
+// 双重过滤规则：
+//  1. isChatModel：排除 embedding/TTS/ASR/视觉等非对话模型
+//  2. isRAGFlowRegistered：仅保留已在 llm_factories.json 注册的模型，
+//     确保前端展示的每个模型都能被 RAGFlow 接受（TenantLLM 表有记录）
 func (c *Client) ListChatModels(ctx context.Context) ([]Model, error) {
 	models, err := c.ListModels(ctx)
 	if err != nil {
@@ -231,10 +278,19 @@ func (c *Client) ListChatModels(ctx context.Context) ([]Model, error) {
 
 	var chatModels []Model
 	for _, m := range models {
-		// 只返回聊天类模型（基于模型名称前缀判断）
-		if isChatModel(m.ModelName) && IsRAGFlowRegistered(m.ModelName) {
-			chatModels = append(chatModels, m)
+		// 第一道过滤：模型类型（排除非对话类）
+		if !isChatModel(m.ModelName) {
+			continue
 		}
+		// 第二道过滤：RAGFlow 注册表白名单
+		// 只有 llm_factories.json 中注册了的模型，RAGFlow TenantLLM 表才会有记录，
+		// Assistant 才能用该模型创建成功。
+		if !isRAGFlowRegistered(m.ModelName) {
+			slog.Debug("ListChatModels: 跳过未在 RAGFlow 注册的模型",
+				slog.String("model", m.ModelName))
+			continue
+		}
+		chatModels = append(chatModels, m)
 	}
 
 	slog.Info("ListChatModels: 过滤后的聊天模型",

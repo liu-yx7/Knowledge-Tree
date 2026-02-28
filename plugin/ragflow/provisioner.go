@@ -35,10 +35,6 @@ type Provisioner struct {
 	// clientCache 缓存已创建的 Client 实例，避免重复创建
 	clientCache map[int32]*Client
 	mu          sync.RWMutex
-
-	// assistantCreating 记录正在创建 Assistant 的用户，避免并发重复创建
-	assistantCreating map[int32]struct{}
-	assistantMu       sync.Mutex
 }
 
 // ProvisionerStore 定义 Provisioner 所需的存储接口
@@ -71,11 +67,10 @@ func NewProvisioner(cfg *Config, s ProvisionerStore) (*Provisioner, error) {
 	}
 
 	return &Provisioner{
-		config:            cfg,
-		authClient:        authClient,
-		store:             s,
-		clientCache:       make(map[int32]*Client),
-		assistantCreating: make(map[int32]struct{}),
+		config:      cfg,
+		authClient:  authClient,
+		store:       s,
+		clientCache: make(map[int32]*Client),
 	}, nil
 }
 
@@ -92,11 +87,10 @@ func NewProvisionerWithAuthClient(cfg *Config, s ProvisionerStore, authClient *A
 	}
 
 	return &Provisioner{
-		config:            cfg,
-		authClient:        authClient,
-		store:             s,
-		clientCache:       make(map[int32]*Client),
-		assistantCreating: make(map[int32]struct{}),
+		config:      cfg,
+		authClient:  authClient,
+		store:       s,
+		clientCache: make(map[int32]*Client),
 	}, nil
 }
 
@@ -261,13 +255,6 @@ func (p *Provisioner) ensureDataset(ctx context.Context, client *Client, memosUs
 // 的 TenantLLM 表中已有对应的 LLM 配置记录，否则 RAGFlow 会以
 // "`model_name` xxx doesn't exist" 拒绝请求。
 func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memosUserID int32, mappingID int32, datasetID string) {
-	if !p.beginAssistantCreation(memosUserID) {
-		slog.Debug("ensureAssistant: 跳过并发重复创建",
-			slog.Int("userID", int(memosUserID)))
-		return
-	}
-	defer p.endAssistantCreation(memosUserID)
-
 	// 查询当前映射确认是否已有 AssistantID，同时获取 preferred_llm_id
 	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
 		UserID: &memosUserID,
@@ -304,13 +291,13 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 	// ==================== 前置条件：确保 TenantLLM 表有该 LLM 记录 ====================
 
 	// 调用 EnsureLLMConfig 确保百炼 LLM 配置已写入 RAGFlow TenantLLM 表。
-	// 这是硬性前置条件：DashScopeAPIKey 未配置时返回 error，不降级。
-	// 若 LLM 已配置（LLMConfigured==true），执行幂等对账确保 tenant_llm 完整。
-	if err := p.EnsureLLMConfig(ctx, memosUserID, llmID); err != nil {
-		slog.Warn("ensureAssistant: EnsureLLMConfig 失败，跳过 Assistant 创建",
+	// 若 DashScopeAPIKey 未配置，此方法会静默跳过。
+	// 若 LLM 已配置（LLMConfigured==true），此方法也会静默跳过（幂等）。
+	if err := p.EnsureLLMConfig(ctx, memosUserID); err != nil {
+		slog.Warn("ensureAssistant: EnsureLLMConfig 失败，Assistant 创建可能因此失败",
 			slog.Int("userID", int(memosUserID)),
 			slog.Any("error", err))
-		return
+		// 继续尝试创建，让 RAGFlow 返回具体错误（而不是直接放弃）
 	}
 
 	// ==================== 创建 Assistant ====================
@@ -393,22 +380,6 @@ func (p *Provisioner) saveAssistantID(ctx context.Context, memosUserID int32, ma
 			slog.Int("userID", int(memosUserID)),
 			slog.Any("error", err))
 	}
-}
-
-func (p *Provisioner) beginAssistantCreation(userID int32) bool {
-	p.assistantMu.Lock()
-	defer p.assistantMu.Unlock()
-	if _, ok := p.assistantCreating[userID]; ok {
-		return false
-	}
-	p.assistantCreating[userID] = struct{}{}
-	return true
-}
-
-func (p *Provisioner) endAssistantCreation(userID int32) {
-	p.assistantMu.Lock()
-	delete(p.assistantCreating, userID)
-	p.assistantMu.Unlock()
 }
 
 // ==================== 认证配置流程 ====================
@@ -591,10 +562,12 @@ func (p *Provisioner) createClient(apiKey string) *Client {
 // 4. 更新映射表标记 LLM 已配置
 //
 // 注意：此方法是幂等的，重复调用不会产生副作用。
-func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32, targetModelID string) error {
-	// 检查系统级配置（硬性前置条件，不降级）
+func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32) error {
+	// 检查系统级配置
 	if p.config.DashScopeAPIKey == "" {
-		return fmt.Errorf("DashScopeAPIKey 未配置，无法自动配置 RAGFlow Model Provider（请设置环境变量 DASHSCOPE_API_KEY）")
+		slog.Debug("未配置 DashScopeAPIKey，跳过 LLM 自动配置",
+			slog.Int("userID", int(memosUserID)))
+		return nil
 	}
 
 	// 查询用户映射
@@ -608,12 +581,11 @@ func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32, ta
 		return fmt.Errorf("用户映射不存在，需先完成认证配置")
 	}
 
-	// 注意：不能仅依赖 LLMConfigured 标记直接跳过。
-	// 该标记只能表示“曾经配置过 provider”，不保证 tenant_llm 当前仍完整。
-	// 这里始终执行一次幂等对账（reconcile），确保缺失模型记录可被自动修复。
+	// 检查是否已配置 LLM（通过 LLMConfigured 字段判断）
 	if mapping.LLMConfigured {
-		slog.Debug("EnsureLLMConfig: 检测到 LLMConfigured=true，执行幂等对账",
+		slog.Debug("用户已配置 LLM，跳过",
 			slog.Int("userID", int(memosUserID)))
+		return nil
 	}
 
 	// 使用存储的凭据登录获取 AuthToken
@@ -645,32 +617,25 @@ func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32, ta
 		}
 	}
 
-	// 验收检查：确认目标模型已在租户 my_llms 中可见。
-	// 仅 provider 配置成功并不代表具体模型可用；若 tenant_llm 缺失目标模型，
-	// 创建 Assistant 会报 "`model_name` xxx doesn't exist"。
-	if targetModelID == "" {
-		targetModelID = mapping.PreferredLLMID
+	// 设置租户默认模型（LLM、Embedding、ASR、VLM、Rerank、TTS）
+	defaultModels := map[string]string{
+		"llm_id":     p.config.DefaultLLMID,
+		"embd_id":    DefaultEmbeddingModel,
+		"asr_id":     DefaultASRModel,
+		"img2txt_id": DefaultImage2TextModel,
+		"rerank_id":  DefaultRerankModel,
+		"tts_id":     DefaultTTSModel,
 	}
-	if targetModelID == "" {
-		targetModelID = p.config.DefaultLLMID
-	}
-	targetModelName, targetFactory := splitModelID(targetModelID)
-	if targetFactory == "" {
-		targetFactory = "Tongyi-Qianwen"
-	}
-
-	myLLMs, err := p.authClient.ListMyLLMs(ctx, authResult.AuthToken, true)
-	if err != nil {
-		return fmt.Errorf("查询租户已配置模型失败: %w", err)
-	}
-
-	if targetModelName != "" && !isModelConfiguredInMyLLMs(myLLMs, targetFactory, targetModelName, "chat") {
-		return fmt.Errorf(
-			"LLM provider 已配置但目标模型不可用: model=%s@%s, available=%s",
-			targetModelName,
-			targetFactory,
-			summarizeFactoryModels(myLLMs[targetFactory].LLM, 8),
-		)
+	if err := p.authClient.SetTenantInfo(ctx, authResult.AuthToken, mapping.RAGFlowUserID, defaultModels); err != nil {
+		slog.Warn("设置租户默认模型失败，LLM 提供商已配置但默认模型未设置",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		// 不阻塞流程，下次重试时会再次尝试
+	} else {
+		slog.Info("为用户设置了默认模型",
+			slog.Int("userID", int(memosUserID)),
+			slog.String("llm_id", p.config.DefaultLLMID),
+			slog.String("embd_id", DefaultEmbeddingModel))
 	}
 
 	// 更新映射表标记 LLM 已配置
@@ -687,57 +652,10 @@ func (p *Provisioner) EnsureLLMConfig(ctx context.Context, memosUserID int32, ta
 		// 不返回错误，LLM 已配置成功
 	}
 
-	slog.Info("为用户配置了 LLM 提供商（Tongyi-Qianwen）",
+	slog.Info("为用户配置了 LLM 提供商和默认模型（Tongyi-Qianwen）",
 		slog.Int("userID", int(memosUserID)))
 
 	return nil
-}
-
-func splitModelID(modelID string) (string, string) {
-	idx := strings.LastIndex(modelID, "@")
-	if idx <= 0 || idx >= len(modelID)-1 {
-		return strings.TrimSpace(modelID), ""
-	}
-	return strings.TrimSpace(modelID[:idx]), strings.TrimSpace(modelID[idx+1:])
-}
-
-func isModelConfiguredInMyLLMs(myLLMs map[string]MyLLMFactory, factory, modelName, modelType string) bool {
-	items, ok := myLLMs[factory]
-	if !ok {
-		return false
-	}
-	for _, item := range items.LLM {
-		if strings.TrimSpace(item.Name) != modelName {
-			continue
-		}
-		if modelType != "" && strings.TrimSpace(item.Type) != modelType {
-			continue
-		}
-		if item.Status == "" || item.Status == "1" {
-			return true
-		}
-	}
-	return false
-}
-
-func summarizeFactoryModels(models []MyLLMModel, max int) string {
-	if len(models) == 0 {
-		return "[]"
-	}
-	if max <= 0 {
-		max = 8
-	}
-	parts := make([]string, 0, max)
-	for i, m := range models {
-		if i >= max {
-			break
-		}
-		parts = append(parts, fmt.Sprintf("%s/%s/status=%s", strings.TrimSpace(m.Name), strings.TrimSpace(m.Type), m.Status))
-	}
-	if len(models) > max {
-		parts = append(parts, fmt.Sprintf("+%d more", len(models)-max))
-	}
-	return "[" + strings.Join(parts, ", ") + "]"
 }
 
 // UpdateUserAssistantLLM 更新用户 Assistant 的 LLM 模型
