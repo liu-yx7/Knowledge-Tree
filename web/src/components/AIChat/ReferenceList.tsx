@@ -35,7 +35,7 @@ interface ReferenceListProps {
 // ==================== Chunk 截图组件 ====================
 
 /** chunk 截图缩略图 + 点击放大 */
-function ChunkImage({ imageId, alt, compact }: { imageId: string; alt: string; compact: boolean }) {
+export function ChunkImage({ imageId, alt, compact }: { imageId: string; alt: string; compact: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasError, setHasError] = useState(false);
   const src = `/api/v1/ragflow/image/${imageId}`;
@@ -95,7 +95,7 @@ function ChunkImage({ imageId, alt, compact }: { imageId: string; alt: string; c
 // ==================== 文件类型图标/标签 ====================
 
 /** 根据 docType 返回显示标签 */
-function DocTypeBadge({ docType, compact }: { docType?: string; compact: boolean }) {
+export function DocTypeBadge({ docType, compact }: { docType?: string; compact: boolean }) {
   if (!docType) return null;
   const label = docType.toUpperCase();
   return (

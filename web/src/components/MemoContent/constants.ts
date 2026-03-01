@@ -46,11 +46,15 @@ export const SANITIZE_SCHEMA = {
     mfrac: [],
     mtext: [],
     semantics: [],
+    // Inline citation tags for AI chat references
+    cite: [["data*"]],
   },
   tagNames: [
     ...(defaultSchema.tagNames || []),
     // iframe for video embeds
     "iframe",
+    // Inline citation for AI chat references
+    "cite",
     // MathML elements for KaTeX math rendering
     "math",
     "annotation",

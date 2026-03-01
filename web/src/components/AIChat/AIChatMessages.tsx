@@ -118,7 +118,7 @@ const AIChatMessages = ({
               {!isUser && message.reasoningContent && <ReasoningBlock content={message.reasoningContent} compact={compact} />}
               {/* 消息内容 */}
               <div className={cn("prose dark:prose-invert max-w-none break-words", compact ? "prose-xs" : "prose-sm")}>
-                <MarkdownRenderer content={message.content} />
+                <MarkdownRenderer content={message.content} references={isUser ? undefined : refs} />
               </div>
               {/* 引用来源 */}
               {!isUser && refs.length > 0 && <ReferenceList references={refs} compact={compact} />}
@@ -139,7 +139,7 @@ const AIChatMessages = ({
             {/* 流式内容 */}
             {streamingContent ? (
               <div className={cn("prose dark:prose-invert max-w-none break-words", compact ? "prose-xs" : "prose-sm")}>
-                <MarkdownRenderer content={streamingContent} />
+                <MarkdownRenderer content={streamingContent} references={streamingReferences.length > 0 ? streamingReferences.map(toReferenceItem) : undefined} />
                 {/* 打字机光标 */}
                 <span className="inline-block w-0.5 h-4 bg-foreground/70 animate-pulse ml-0.5 align-text-bottom" />
               </div>
