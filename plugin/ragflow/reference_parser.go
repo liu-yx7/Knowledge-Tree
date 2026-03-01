@@ -30,6 +30,16 @@ type ParsedReference struct {
 	Similarity float64 `json:"similarity"`
 	// DocumentName RAGFlow 原始文档名（调试用）
 	DocumentName string `json:"document_name"`
+
+	// === RAGFlow chunk 可视化字段 ===
+
+	// ImageID RAGFlow chunk 截图 ID（格式 "{kb_id}-{chunk_id}"，通过 /v1/document/image/{id} 获取）
+	// 空字符串表示该 chunk 无截图（纯文本文件等）
+	ImageID string `json:"image_id,omitempty"`
+	// Positions chunk 在原始文档中的页面坐标 [[x0,y0,x1,y1], ...]
+	Positions [][]int `json:"positions,omitempty"`
+	// DocType 原始文档类型（"pdf"/"docx"/"pptx"/"xlsx" 等）
+	DocType string `json:"doc_type,omitempty"`
 }
 
 // 引用类型常量
@@ -76,6 +86,10 @@ func parseOneReference(ref OpenAIReference) ParsedReference {
 		Similarity:     ref.Similarity,
 		DocumentName:   ref.DocumentName,
 		ContentSnippet: truncateSnippet(ref.Content, maxSnippetLen),
+		// 透传 RAGFlow chunk 可视化字段
+		ImageID:   ref.ImageID,
+		Positions: ref.Positions,
+		DocType:   ref.DocType,
 	}
 
 	name := ref.DocumentName

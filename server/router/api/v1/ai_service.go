@@ -348,6 +348,15 @@ func (s *APIV1Service) ensureAssistantID(ctx context.Context, userID int32) (str
 				slog.Any("error", err))
 			// 降级到被动查询
 		}
+
+		// 确保 Assistant 绑定了 Dataset（幂等操作）
+		// 解决 Assistant 创建时 dataset_ids 为空、后续从未绑定的问题
+		if err := s.RAGFlowProvisioner.EnsureAssistantDatasetBinding(ctx, userID); err != nil {
+			slog.Warn("ensureAssistantID: Dataset 绑定失败，检索可能无结果",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			// 不阻塞对话，仅记录警告
+		}
 	}
 
 	// 从 mapping 表读取 AssistantID

@@ -418,6 +418,39 @@ func (c *Client) HealthCheck(ctx context.Context) error {
 	return err
 }
 
+// ==================== 文档图片 ====================
+
+// GetDocumentImage 获取 RAGFlow chunk 截图的原始 JPEG 字节
+// RAGFlow API: GET /v1/document/image/{image_id}
+// image_id 格式为 "{kb_id}-{chunk_id}"，由 RAGFlow 解析存储在 MinIO/S3 中的截图
+// 该端点在 RAGFlow 侧无需认证
+func (c *Client) GetDocumentImage(ctx context.Context, imageID string) ([]byte, error) {
+	path := fmt.Sprintf("/v1/document/image/%s", imageID)
+	url := c.config.BaseURL + path
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建图片请求失败: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("获取图片失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("获取图片失败: HTTP %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取图片数据失败: %w", err)
+	}
+
+	return data, nil
+}
+
 // Close 关闭客户端连接
 func (c *Client) Close() error {
 	c.httpClient.CloseIdleConnections()

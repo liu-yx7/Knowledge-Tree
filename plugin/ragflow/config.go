@@ -23,6 +23,7 @@ const DefaultLLMProvider = "Tongyi-Qianwen"
 
 // 默认模型 ID（Tongyi-Qianwen 系列，格式：model_name@provider）
 // 用于 SetTenantInfo 设置用户的默认模型
+// 格式：{model_name}@{provider}（SetTenantInfo API 需要完整格式）
 const (
 	DefaultEmbeddingModel  = "text-embedding-v4@Tongyi-Qianwen"
 	DefaultASRModel        = "qwen3-asr-flash@Tongyi-Qianwen"
@@ -30,6 +31,11 @@ const (
 	DefaultRerankModel     = "gte-rerank@Tongyi-Qianwen"
 	DefaultTTSModel        = "sambert-zhide-v1@Tongyi-Qianwen"
 )
+
+// DefaultRerankModelName 仅模型名（不含 @provider），用于 Chat Assistant 的 rerank_id 字段。
+// RAGFlow chat.py 的 rerank_id 校验不调用 split_model_name_and_factory()，
+// 直接用完整的 name@provider 查询 TenantLLM.llm_name 字段会匹配失败。
+const DefaultRerankModelName = "gte-rerank"
 
 // GetDefaultLLMID 获取默认 LLM 模型 ID
 // 优先级：环境变量 > 硬编码默认值

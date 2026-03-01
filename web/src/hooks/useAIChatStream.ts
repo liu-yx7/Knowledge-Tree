@@ -29,6 +29,12 @@ export interface StreamReference {
   content_snippet: string;
   similarity: number;
   document_name: string;
+  /** RAGFlow chunk 截图 ID（通过 /api/v1/ragflow/image/{id} 获取） */
+  image_id?: string;
+  /** chunk 在文档中的页面坐标 */
+  positions?: number[][];
+  /** 原始文档类型 (pdf/docx/pptx 等) */
+  doc_type?: string;
 }
 
 /** Hook 返回的流式状态 */

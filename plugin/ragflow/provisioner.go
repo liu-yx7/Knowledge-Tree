@@ -304,11 +304,12 @@ func (p *Provisioner) ensureAssistant(ctx context.Context, client *Client, memos
 
 	assistantName := fmt.Sprintf("knowtree_assistant_%d", memosUserID)
 
-	// 尝试创建 Assistant（传空 dataset_ids 绕过空 Dataset 校验，必须传 llm_id）
+	// 尝试创建 Assistant（传空 dataset_ids 绕过空 Dataset 校验，必须传 llm_id 和 rerank_id）
 	assistant, err := client.CreateChatAssistant(ctx, &CreateChatAssistantRequest{
 		Name:       assistantName,
 		DatasetIDs: []string{},
 		LLMID:      llmID,
+		RerankID:   DefaultRerankModelName,
 	})
 	if err != nil {
 		// 降级路径：如果是"重复名称"错误，说明 Assistant 已在 RAGFlow 中创建，

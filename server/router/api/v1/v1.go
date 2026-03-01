@@ -159,6 +159,9 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	// swallow this path and return gRPC 404.
 	gwGroup.POST("/api/v1/ai/conversations/:conversationId/messages/stream", s.handleStreamMessage)
 
+	// RAGFlow chunk image proxy — registered before wildcard to avoid gRPC-Gateway interception
+	gwGroup.GET("/api/v1/ragflow/image/:imageId", s.handleRAGFlowImage)
+
 	gwGroup.Any("/api/v1/*", handler)
 	gwGroup.Any("/file/*", handler)
 

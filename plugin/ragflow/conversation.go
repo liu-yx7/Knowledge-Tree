@@ -17,6 +17,7 @@ type CreateChatAssistantRequest struct {
 	Name       string   // 助手名称
 	DatasetIDs []string // 关联的 Dataset ID 列表
 	LLMID      string   // LLM 模型标识，格式：{model_name}@{provider}，例如 "deepseek-chat@DeepSeek"
+	RerankID   string   // Rerank 模型标识，格式：{model_name}@{provider}，例如 "gte-rerank@Tongyi-Qianwen"
 }
 
 // CreateChatAssistant 创建聊天助手
@@ -33,6 +34,11 @@ func (c *Client) CreateChatAssistant(ctx context.Context, req *CreateChatAssista
 		payload["llm"] = map[string]any{
 			"model_name": req.LLMID,
 		}
+	}
+
+	// 设置 Rerank 模型（提升检索准确性，为 dialog 表顶层字段）
+	if req.RerankID != "" {
+		payload["rerank_id"] = req.RerankID
 	}
 
 	resp, err := c.request(ctx, http.MethodPost, "/api/v1/chats", payload)
