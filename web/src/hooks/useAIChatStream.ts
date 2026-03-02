@@ -58,6 +58,7 @@ export interface StreamState {
 export function useAIChatStream() {
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -81,7 +82,7 @@ export function useAIChatStream() {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    setIsStreaming(false);
+    // 不在此处 setIsStreaming(false)，由 sendStreamMessage 的 finally 通过 generationRef 守卫处理
   }, []);
 
   /** 发送消息并消费 SSE 流 */
@@ -90,6 +91,7 @@ export function useAIChatStream() {
       // 中止之前的请求
       abort();
       reset();
+      const currentGeneration = ++generationRef.current;
       setIsStreaming(true);
 
       const controller = new AbortController();
@@ -186,16 +188,20 @@ export function useAIChatStream() {
           // 用户主动中止，不设置错误
           return;
         }
-        setError(err instanceof Error ? err.message : "Stream failed");
+        if (generationRef.current === currentGeneration) {
+          setError(err instanceof Error ? err.message : "Stream failed");
+        }
       } finally {
-        setIsStreaming(false);
-        abortRef.current = null;
+        if (generationRef.current === currentGeneration) {
+          setIsStreaming(false);
+          abortRef.current = null;
 
-        // 流结束后刷新对话和消息缓存
-        queryClient.invalidateQueries({ queryKey: aiKeys.conversations() });
-        if (conversationUid) {
-          queryClient.invalidateQueries({ queryKey: aiKeys.conversation(conversationUid) });
-          queryClient.invalidateQueries({ queryKey: aiKeys.messages(conversationUid) });
+          // 流结束后刷新对话和消息缓存
+          queryClient.invalidateQueries({ queryKey: aiKeys.conversations() });
+          if (conversationUid) {
+            queryClient.invalidateQueries({ queryKey: aiKeys.conversation(conversationUid) });
+            queryClient.invalidateQueries({ queryKey: aiKeys.messages(conversationUid) });
+          }
         }
       }
     },

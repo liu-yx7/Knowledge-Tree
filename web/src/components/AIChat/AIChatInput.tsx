@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,11 +21,16 @@ interface AIChatInputProps {
 
 const AIChatInput = ({ onSend, onAbort, disabled, isStreaming = false, compact = false, showToolbar = true }: AIChatInputProps) => {
   const [inputMessage, setInputMessage] = useState("");
+  const sendingRef = useRef(false);
 
   const handleSend = () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || sendingRef.current) return;
+    sendingRef.current = true;
     onSend(inputMessage);
     setInputMessage("");
+    queueMicrotask(() => {
+      sendingRef.current = false;
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
