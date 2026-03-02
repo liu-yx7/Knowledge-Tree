@@ -1,7 +1,7 @@
 // filepath: /Users/yuxuanli/Desktop/Project/Knowtree/Knowledge-Tree/web/src/components/AIChat/ReferenceList.tsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileText, ExternalLink, Paperclip, Image as ImageIcon, X } from "lucide-react";
+import { FileText, ExternalLink, Image as ImageIcon, X, ChevronDown, ChevronRight, File } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ==================== 通用引用类型 ====================
@@ -24,6 +24,8 @@ export interface ReferenceItem {
   imageId?: string;
   /** 原始文档类型 (pdf/docx/pptx 等) */
   docType?: string;
+  /** 原始文档名称 */
+  documentName?: string;
 }
 
 interface ReferenceListProps {
@@ -48,7 +50,7 @@ export function ChunkImage({ imageId, alt, compact }: { imageId: string; alt: st
       <div
         className={cn(
           "relative cursor-pointer rounded overflow-hidden border border-gray-200 dark:border-gray-600 hover:border-primary/50 transition-colors",
-          compact ? "mt-1 ml-5 max-w-[120px]" : "mt-1.5 ml-5 max-w-[200px]",
+          compact ? "max-w-[120px]" : "max-w-[200px]",
         )}
         onClick={(e) => {
           e.stopPropagation();
@@ -111,24 +113,80 @@ export function DocTypeBadge({ docType, compact }: { docType?: string; compact: 
   );
 }
 
+// ==================== 文档类型图标颜色 ====================
+
+/** 根据文件类型返回对应的图标颜色 */
+function getDocTypeColor(docType?: string): string {
+  switch (docType?.toLowerCase()) {
+    case "pdf":
+      return "text-red-500";
+    case "docx":
+    case "doc":
+      return "text-blue-500";
+    case "pptx":
+    case "ppt":
+      return "text-orange-500";
+    case "xlsx":
+    case "xls":
+      return "text-green-500";
+    default:
+      return "text-gray-500";
+  }
+}
+
+// ==================== 来源文档聚合 ====================
+
+interface DocAgg {
+  documentName: string;
+  docType?: string;
+  chunkCount: number;
+  refIndices: number[];
+  isClickable: boolean;
+  memoUid?: string;
+}
+
 /**
  * 引用来源列表组件
- * 展示 AI 回答中引用的 Memo/Attachment 来源，支持点击跳转
- * 当 chunk 有截图时（PDF 等），展示缩略图并可点击放大
+ * 重新设计版：
+ *   1. Chunk 截图横向滚动（可折叠），带 Fig. N 标签
+ *   2. 来源文档卡片 — 按 documentName 去重，显示文件图标 + 文件名
  */
 const ReferenceList = ({ references, className, compact = false }: ReferenceListProps) => {
   const navigate = useNavigate();
+  const [chunksExpanded, setChunksExpanded] = useState(false);
+
+  // 按 documentName 分组，生成来源文档卡片
+  const docAggs = useMemo<DocAgg[]>(() => {
+    const map = new Map<string, DocAgg>();
+    references.forEach((ref, index) => {
+      const key = ref.documentName || ref.title || "unknown";
+      const existing = map.get(key);
+      if (existing) {
+        existing.chunkCount++;
+        existing.refIndices.push(index);
+      } else {
+        map.set(key, {
+          documentName: key,
+          docType: ref.docType,
+          chunkCount: 1,
+          refIndices: [index],
+          isClickable: ref.type === "memo" && !!ref.memoUid,
+          memoUid: ref.memoUid,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [references]);
+
+  // 过滤有截图的 chunk
+  const chunksWithImages = useMemo(
+    () => references.map((ref, i) => ({ ref, index: i })).filter(({ ref }) => ref.imageId),
+    [references],
+  );
 
   if (!references || references.length === 0) {
     return null;
   }
-
-  const handleClick = (ref: ReferenceItem) => {
-    if (ref.type === "memo" && ref.memoUid) {
-      navigate(`/m/${ref.memoUid}`);
-    }
-    // attachment 类型暂不支持跳转
-  };
 
   return (
     <div
@@ -138,80 +196,88 @@ const ReferenceList = ({ references, className, compact = false }: ReferenceList
         className,
       )}
     >
-      {/* 标题 */}
-      <div className={cn("flex items-center gap-1.5 text-muted-foreground mb-2", compact ? "text-[10px]" : "text-xs")}>
-        <FileText className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
-        <span>
-          引用来源 ({references.length})
-        </span>
-      </div>
+      {/* ==================== Chunk 截图横向展示（可折叠） ==================== */}
+      {chunksWithImages.length > 0 && (
+        <div className="mb-2">
+          {/* 折叠按钮 */}
+          <button
+            type="button"
+            onClick={() => setChunksExpanded(!chunksExpanded)}
+            className={cn(
+              "flex items-center gap-1 text-muted-foreground w-full text-left mb-1.5",
+              compact ? "text-[10px]" : "text-xs",
+            )}
+          >
+            {chunksExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <ImageIcon className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+            <span>引用片段 ({chunksWithImages.length})</span>
+          </button>
 
-      {/* 引用列表 */}
-      <div className={cn("space-y-1.5", compact && "space-y-1")}>
-        {references.map((ref, index) => {
-          const isClickable = ref.type === "memo" && !!ref.memoUid;
-          const Icon = ref.type === "attachment" ? Paperclip : FileText;
-
-          return (
-            <div
-              key={`${ref.memoUid || ref.attachmentUid || "unknown"}-${index}`}
-              onClick={() => isClickable && handleClick(ref)}
-              className={cn(
-                "group rounded-md transition-colors",
-                "bg-gray-50 dark:bg-gray-800/50",
-                isClickable && "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800",
-                compact ? "p-1.5" : "p-2",
-              )}
-            >
-              {/* 标题行 */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <Icon className={cn("shrink-0 text-muted-foreground", compact ? "w-3 h-3" : "w-3.5 h-3.5")} />
+          {/* 横向滚动截图列表 */}
+          {chunksExpanded && (
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+              {chunksWithImages.map(({ ref, index }) => (
+                <div
+                  key={`chunk-${index}`}
+                  className="shrink-0 flex flex-col items-center gap-1"
+                >
+                  <ChunkImage
+                    imageId={ref.imageId!}
+                    alt={ref.title || `chunk ${index + 1}`}
+                    compact={compact}
+                  />
                   <span
                     className={cn(
-                      "font-medium text-gray-700 dark:text-gray-300 truncate",
-                      compact ? "text-xs" : "text-sm",
+                      "text-primary font-medium bg-primary/10 rounded-full px-2 py-0.5",
+                      compact ? "text-[10px]" : "text-xs",
                     )}
                   >
-                    {ref.title}
+                    Fig. {index + 1}
                   </span>
-                  <DocTypeBadge docType={ref.docType} compact={compact} />
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* 相似度分数 */}
-                  <span className={cn("text-gray-400 dark:text-gray-500", compact ? "text-[10px]" : "text-xs")}>
-                    {(ref.similarity * 100).toFixed(0)}%
-                  </span>
-                  {/* 跳转图标 */}
-                  {isClickable && (
-                    <ExternalLink
-                      className={cn(
-                        "text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity",
-                        compact ? "w-3 h-3" : "w-3.5 h-3.5",
-                      )}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Chunk 截图（有 imageId 时展示） */}
-              {ref.imageId && (
-                <ChunkImage
-                  imageId={ref.imageId}
-                  alt={ref.title || "chunk"}
-                  compact={compact}
-                />
-              )}
-
-              {/* 内容片段（无截图时展示文本，有截图时也可选展示） */}
-              {!compact && ref.contentSnippet && !ref.imageId && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1 ml-5">
-                  {ref.contentSnippet}
-                </p>
-              )}
+              ))}
             </div>
-          );
-        })}
+          )}
+        </div>
+      )}
+
+      {/* ==================== 来源文档卡片 ==================== */}
+      <div className={cn("flex items-center gap-1.5 text-muted-foreground mb-2", compact ? "text-[10px]" : "text-xs")}>
+        <FileText className={compact ? "w-3 h-3" : "w-3.5 h-3.5"} />
+        <span>来源文档 ({docAggs.length})</span>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {docAggs.map((doc) => (
+          <div
+            key={doc.documentName}
+            onClick={() => doc.isClickable && doc.memoUid && navigate(`/m/${doc.memoUid}`)}
+            className={cn(
+              "group flex items-center gap-2 rounded-lg border transition-colors",
+              "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700",
+              doc.isClickable && "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-primary/30",
+              compact ? "px-2 py-1.5 max-w-[180px]" : "px-3 py-2 max-w-[240px]",
+            )}
+          >
+            {/* 文件图标 */}
+            <File className={cn("shrink-0", getDocTypeColor(doc.docType), compact ? "w-4 h-4" : "w-5 h-5")} />
+            {/* 文件名 */}
+            <div className="flex-1 min-w-0">
+              <div className={cn("font-medium text-gray-700 dark:text-gray-300 truncate", compact ? "text-[11px]" : "text-xs")}>
+                {doc.documentName}
+              </div>
+            </div>
+            {/* 跳转图标 */}
+            {doc.isClickable && (
+              <ExternalLink
+                className={cn(
+                  "text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0",
+                  compact ? "w-3 h-3" : "w-3.5 h-3.5",
+                )}
+              />
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

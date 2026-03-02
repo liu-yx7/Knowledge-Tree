@@ -102,6 +102,14 @@ export default function InlineReference({ chunkIndex, reference }: InlineReferen
           </span>
         </div>
 
+        {/* 来源文件 */}
+        {reference.documentName && (
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <FileText className="w-3 h-3 shrink-0" />
+            <span className="truncate">{reference.documentName}</span>
+          </div>
+        )}
+
         {/* Chunk 截图（PDF 等有 imageId 时展示） */}
         {reference.imageId && (
           <div className={cn("rounded overflow-hidden border border-gray-200 dark:border-gray-600 max-w-[300px]")}>

@@ -47,6 +47,7 @@ function toReferenceItem(ref: StreamReference): ReferenceItem {
     similarity: ref.similarity,
     imageId: ref.image_id,
     docType: ref.doc_type,
+    documentName: ref.document_name,
   };
 }
 
