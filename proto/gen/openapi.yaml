@@ -549,6 +549,70 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /api/v1/chat/datasets:
+        get:
+            tags:
+                - ChatSettingsService
+            description: ListDatasets 获取用户可用的 Dataset 列表
+            operationId: ChatSettingsService_ListDatasets
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListDatasetsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/chat/settings:
+        get:
+            tags:
+                - ChatSettingsService
+            description: GetChatSettings 获取用户的聊天设置
+            operationId: ChatSettingsService_GetChatSettings
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ChatSettings'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        patch:
+            tags:
+                - ChatSettingsService
+            description: |-
+                UpdateChatSettings 更新用户的聊天设置
+                 会同步更新 RAGFlow Assistant 的 Dataset 配置
+            operationId: ChatSettingsService_UpdateChatSettings
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateChatSettingsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ChatSettings'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /api/v1/identity-providers:
         get:
             tags:
@@ -763,6 +827,72 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/InstanceSetting'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/llm/models:
+        get:
+            tags:
+                - LLMService
+            description: |-
+                ListAvailableModels 获取可用的 LLM 模型列表
+                 从 DashScope API 动态获取，带缓存（5 分钟 TTL）
+            operationId: LLMService_ListAvailableModels
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListAvailableModelsResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/llm/preference:
+        get:
+            tags:
+                - LLMService
+            description: GetUserLLMPreference 获取用户的 LLM 偏好设置
+            operationId: LLMService_GetUserLLMPreference
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserLLMPreference'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - LLMService
+            description: |-
+                SetUserLLMPreference 设置用户的 LLM 偏好
+                 会同步更新 RAGFlow Assistant 的 LLM 配置
+            operationId: LLMService_SetUserLLMPreference
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetUserLLMPreferenceRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UserLLMPreference'
                 default:
                     description: Default error response
                     content:
@@ -1262,6 +1392,132 @@ paths:
                 "200":
                     description: OK
                     content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ragflow/search:
+        post:
+            tags:
+                - RAGFlowService
+            description: SemanticSearch 执行语义检索
+            operationId: RAGFlowService_SemanticSearch
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SemanticSearchRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SemanticSearchResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ragflow/stats:
+        get:
+            tags:
+                - RAGFlowService
+            description: GetSyncStats 获取同步统计信息
+            operationId: RAGFlowService_GetSyncStats
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SyncStats'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ragflow/status:
+        get:
+            tags:
+                - RAGFlowService
+            description: GetSyncStatus 获取 RAGFlow 同步服务状态
+            operationId: RAGFlowService_GetSyncStatus
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/SyncStatus'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ragflow/sync:
+        post:
+            tags:
+                - RAGFlowService
+            description: TriggerSync 手动触发一次同步
+            operationId: RAGFlowService_TriggerSync
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TriggerSyncRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/ragflow/sync-states:
+        get:
+            tags:
+                - RAGFlowService
+            description: ListContentSyncStates 列出内容同步状态
+            operationId: RAGFlowService_ListContentSyncStates
+            parameters:
+                - name: statusFilter
+                  in: query
+                  description: '过滤状态: pending, synced, failed, skipped'
+                  schema:
+                    type: string
+                - name: contentTypeFilter
+                  in: query
+                  description: '内容类型过滤: memo, attachment'
+                  schema:
+                    type: string
+                - name: pageSize
+                  in: query
+                  description: 分页大小
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageToken
+                  in: query
+                  description: 分页令牌
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListContentSyncStatesResponse'
                 default:
                     description: Default error response
                     content:
@@ -2365,6 +2621,51 @@ components:
                     description: |-
                         Optional. The related memo. Refer to `Memo.name`.
                          Format: memos/{memo}
+        ChatSettings:
+            type: object
+            properties:
+                datasetIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 当前选择的 Dataset ID 列表
+                quoteEnabled:
+                    type: boolean
+                    description: RAG 引用开关状态（默认 true）
+                reasoningEnabled:
+                    type: boolean
+                    description: 深度研究（Reasoning）开关状态（默认 false）
+                availableDatasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Dataset'
+                    description: 可用的 Dataset 列表（方便前端渲染）
+        ContentSyncState:
+            type: object
+            properties:
+                contentType:
+                    type: string
+                    description: '内容类型: memo, attachment'
+                contentUid:
+                    type: string
+                    description: 内容 UID
+                status:
+                    type: string
+                    description: '同步状态: pending, synced, failed, skipped'
+                ragflowDocumentId:
+                    type: string
+                    description: RAGFlow 文档 ID
+                syncedTime:
+                    type: string
+                    description: 同步时间
+                    format: date-time
+                errorMessage:
+                    type: string
+                    description: 错误信息（如果失败）
+                retryCount:
+                    type: integer
+                    description: 重试次数
+                    format: int32
         Conversation:
             type: object
             properties:
@@ -2389,12 +2690,6 @@ components:
                     type: string
                     description: Last update timestamp.
                     format: date-time
-                model:
-                    type: string
-                    description: The AI model used for this conversation.
-                provider:
-                    type: string
-                    description: The AI provider (openai, deepseek, etc.).
                 messages:
                     readOnly: true
                     type: array
@@ -2408,12 +2703,6 @@ components:
                 title:
                     type: string
                     description: Optional title for the conversation.
-                model:
-                    type: string
-                    description: Optional model to use.
-                provider:
-                    type: string
-                    description: Optional provider to use.
         CreatePersonalAccessTokenRequest:
             required:
                 - parent
@@ -2443,6 +2732,26 @@ components:
                     description: |-
                         The actual token value - only returned on creation.
                          This is the only time the token value will be visible.
+        Dataset:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Dataset ID
+                name:
+                    type: string
+                    description: Dataset 名称
+                description:
+                    type: string
+                    description: Dataset 描述
+                documentCount:
+                    type: integer
+                    description: 文档数量
+                    format: int32
+                isDefault:
+                    type: boolean
+                    description: 是否为当前用户的默认 Dataset
+            description: Dataset 表示一个知识库
         FieldMapping:
             type: object
             properties:
@@ -2644,6 +2953,30 @@ components:
                         - $ref: '#/components/schemas/StorageSetting_S3Config'
                     description: The S3 config.
             description: Storage configuration settings for instance attachments.
+        LLMModel:
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: |-
+                        模型 ID，格式：{model_name}@{provider}
+                         例如：qwen-plus@Tongyi-Qianwen
+                modelName:
+                    type: string
+                    description: 模型名称（用于 API 调用）
+                displayName:
+                    type: string
+                    description: 显示名称（用于前端展示）
+                provider:
+                    type: string
+                    description: 模型提供商
+                description:
+                    type: string
+                    description: 模型描述
+                status:
+                    type: string
+                    description: 模型状态：RUNNING, STOPPED 等
+            description: LLMModel 表示一个可用的 LLM 模型
         ListActivitiesResponse:
             type: object
             properties:
@@ -2683,6 +3016,25 @@ components:
                     type: integer
                     description: The total count of attachments (may be approximate).
                     format: int32
+        ListAvailableModelsResponse:
+            type: object
+            properties:
+                models:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LLMModel'
+                    description: 可用的 LLM 模型列表
+        ListContentSyncStatesResponse:
+            type: object
+            properties:
+                syncStates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ContentSyncState'
+                    description: 同步状态列表
+                nextPageToken:
+                    type: string
+                    description: 下一页令牌
         ListConversationsResponse:
             type: object
             properties:
@@ -2692,6 +3044,14 @@ components:
                         $ref: '#/components/schemas/Conversation'
                 nextPageToken:
                     type: string
+        ListDatasetsResponse:
+            type: object
+            properties:
+                datasets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Dataset'
+                    description: 用户可用的 Dataset 列表
         ListIdentityProvidersResponse:
             type: object
             properties:
@@ -3030,9 +3390,8 @@ components:
                         - MESSAGE_ROLE_UNSPECIFIED
                         - USER
                         - ASSISTANT
-                        - SYSTEM
                     type: string
-                    description: Role of the message sender (user, assistant, system).
+                    description: Role of the message sender (user, assistant).
                     format: enum
                 content:
                     type: string
@@ -3042,11 +3401,14 @@ components:
                     type: string
                     description: Creation timestamp.
                     format: date-time
-                tokenCount:
+                reasoningContent:
                     readOnly: true
-                    type: integer
-                    description: Token count for this message.
-                    format: int32
+                    type: string
+                    description: Reasoning content (DeepSeek-style thinking chain, optional).
+                referencesJson:
+                    readOnly: true
+                    type: string
+                    description: References JSON (knowledge source citations from RAGFlow).
             description: Message represents a single message in a conversation.
         OAuth2Config:
             type: object
@@ -3140,6 +3502,50 @@ components:
                     type: string
                     description: When the access token expires.
                     format: date-time
+        SearchResult:
+            type: object
+            properties:
+                memoName:
+                    type: string
+                    description: Memo 资源名称 (memos/{uid})
+                contentSnippet:
+                    type: string
+                    description: Memo 内容片段
+                similarityScore:
+                    type: number
+                    description: 相似度分数 (0.0-1.0)
+                    format: float
+                title:
+                    type: string
+                    description: Memo 标题（第一行或前50字符）
+                createTime:
+                    type: string
+                    description: 创建时间
+                    format: date-time
+        SemanticSearchRequest:
+            required:
+                - query
+            type: object
+            properties:
+                query:
+                    type: string
+                    description: 搜索查询
+                topK:
+                    type: integer
+                    description: 返回结果数量限制
+                    format: int32
+                similarityThreshold:
+                    type: number
+                    description: 相似度阈值 (0.0-1.0)
+                    format: float
+        SemanticSearchResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SearchResult'
+                    description: 搜索结果列表
         SendMessageRequest:
             required:
                 - conversationId
@@ -3189,6 +3595,14 @@ components:
                     items:
                         $ref: '#/components/schemas/MemoRelation'
                     description: Required. The relations to set for the memo.
+        SetUserLLMPreferenceRequest:
+            required:
+                - modelId
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: 用户选择的模型 ID，格式：{model_name}@{provider}
         Shortcut:
             required:
                 - title
@@ -3314,6 +3728,52 @@ components:
                     description: |-
                         Required. The resource name of the user to subscribe to.
                          Format: users/{user}
+        SyncStats:
+            type: object
+            properties:
+                pendingCount:
+                    type: integer
+                    description: 待同步数量
+                    format: int32
+                syncedCount:
+                    type: integer
+                    description: 已同步数量
+                    format: int32
+                failedCount:
+                    type: integer
+                    description: 失败数量
+                    format: int32
+                skippedCount:
+                    type: integer
+                    description: 跳过数量
+                    format: int32
+                totalCount:
+                    type: integer
+                    description: 总数量
+                    format: int32
+        SyncStatus:
+            type: object
+            properties:
+                healthy:
+                    type: boolean
+                    description: RAGFlow 服务是否健康
+                circuitOpen:
+                    type: boolean
+                    description: 熔断器是否打开
+                lastCheckTime:
+                    type: string
+                    description: 最后检查时间
+                    format: date-time
+                failureCount:
+                    type: integer
+                    description: 连续失败次数
+                    format: int32
+                runnerActive:
+                    type: boolean
+                    description: 同步服务是否运行中
+        TriggerSyncRequest:
+            type: object
+            properties: {}
         UnsubscribeUserRequest:
             required:
                 - name
@@ -3324,6 +3784,20 @@ components:
                     description: |-
                         Required. The resource name of the user to unsubscribe from.
                          Format: users/{user}
+        UpdateChatSettingsRequest:
+            type: object
+            properties:
+                datasetIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 选择的 Dataset ID 列表（可选，不传则不更新）
+                quoteEnabled:
+                    type: boolean
+                    description: RAG 引用开关（可选，不传则不更新）
+                reasoningEnabled:
+                    type: boolean
+                    description: 深度研究（Reasoning）开关（可选，不传则不更新）
         UpdateConversationRequest:
             required:
                 - conversationId
@@ -3332,10 +3806,6 @@ components:
                 conversationId:
                     type: string
                 title:
-                    type: string
-                model:
-                    type: string
-                provider:
                     type: string
         UpsertMemoReactionRequest:
             required:
@@ -3409,6 +3879,21 @@ components:
                     type: string
                     description: Output only. The last update timestamp.
                     format: date-time
+        UserLLMPreference:
+            type: object
+            properties:
+                modelId:
+                    type: string
+                    description: 当前选择的模型 ID
+                modelName:
+                    type: string
+                    description: 当前选择的模型名称
+                provider:
+                    type: string
+                    description: 当前选择的模型提供商
+                llmConfigured:
+                    type: boolean
+                    description: LLM 是否已配置（RAGFlow 是否已配置百炼 API Key）
         UserNotification:
             type: object
             properties:
@@ -3603,8 +4088,18 @@ tags:
     - name: ActivityService
     - name: AttachmentService
     - name: AuthService
+    - name: ChatSettingsService
+      description: |-
+        ChatSettingsService 提供 AI 聊天设置管理功能
+         用于管理用户的 Dataset 选择和对话选项
     - name: IdentityProviderService
     - name: InstanceService
+    - name: LLMService
+      description: |-
+        LLMService 提供 LLM 模型管理功能
+         用于获取可用模型列表和管理用户的模型偏好设置
     - name: MemoService
+    - name: RAGFlowService
+      description: RAGFlowService 提供 RAGFlow 同步状态查询和管理功能
     - name: ShortcutService
     - name: UserService

@@ -1,0 +1,937 @@
+{
+  "nodes": [
+    {
+      "id": "entry_main",
+      "type": "text",
+      "text": "**cmd/memos/main.go**\n`cmd/memos/main.go`\n\n**核心职责**: 应用程序入口点，负责 Cobra CLI 初始化、配置解析、数据库驱动创建、服务器启动与优雅关闭\n\n**关键交互**:\n- **调用**: server, store, db\n- **被用于**: 系统启动入口\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 0,
+      "y": -800,
+      "width": 400,
+      "height": 280,
+      "color": "1"
+    },
+    {
+      "id": "server_core",
+      "type": "text",
+      "text": "**Server Core**\n`server/server.go`\n\n**核心职责**: Echo HTTP 服务器核心，负责路由注册、中间件配置、后台任务启动、LLM Manager 初始化与优雅关闭\n\n**关键交互**:\n- **调用**: apiv1, frontend, fileserver, rss, store, llm\n- **被用于**: main.go 入口\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 0,
+      "y": -400,
+      "width": 400,
+      "height": 280,
+      "color": "1"
+    },
+    {
+      "id": "api_v1_service",
+      "type": "text",
+      "text": "**API V1 Service**\n`server/router/api/v1/`\n\n**核心职责**: gRPC-Gateway + Connect RPC 双协议 API 层，实现所有业务服务接口（Memo、User、Auth、AI、Attachment 等）\n\n**关键交互**:\n- **调用**: store, auth, markdown, llm, webhook\n- **被用于**: server.go\n\n**复杂度评估**: High\n**潜在风险**: 📈 服务数量较多，需关注接口一致性",
+      "x": -500,
+      "y": 50,
+      "width": 420,
+      "height": 300,
+      "color": "3"
+    },
+    {
+      "id": "connect_handler",
+      "type": "text",
+      "text": "**Connect RPC Handler**\n`server/router/api/v1/connect_*.go`\n\n**核心职责**: Connect RPC 协议处理，提供浏览器原生的类型安全 RPC 调用，包含拦截器链（Auth、Logging、Recovery）\n\n**关键交互**:\n- **调用**: APIV1Service\n- **被用于**: 前端 React 应用\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": -500,
+      "y": 420,
+      "width": 420,
+      "height": 260,
+      "color": "3"
+    },
+    {
+      "id": "grpc_gateway",
+      "type": "text",
+      "text": "**gRPC-Gateway (REST)**\n`server/router/api/v1/v1.go`\n\n**核心职责**: 提供标准 HTTP/JSON REST API，供外部工具、CLI 客户端和第三方集成使用\n\n**关键交互**:\n- **调用**: APIV1Service\n- **被用于**: 外部 REST 客户端\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 100,
+      "y": 420,
+      "width": 400,
+      "height": 260,
+      "color": "3"
+    },
+    {
+      "id": "auth_module",
+      "type": "text",
+      "text": "**Authentication Module**\n`server/auth/`\n\n**核心职责**: JWT Access Token V2 验证、Personal Access Token (PAT) 验证、用户上下文注入\n\n**关键交互**:\n- **调用**: store (用户/Token 查询)\n- **被用于**: API 拦截器、中间件\n\n**复杂度评估**: Medium\n**潜在风险**: 🔐 安全关键模块",
+      "x": 600,
+      "y": 50,
+      "width": 400,
+      "height": 280,
+      "color": "3"
+    },
+    {
+      "id": "memo_service",
+      "type": "text",
+      "text": "**Memo Service**\n`server/router/api/v1/memo_service.go`\n\n**核心职责**: Memo CRUD 核心业务逻辑，包含创建、列表（分页）、更新、删除、评论、Webhook 分发\n\n**关键交互**:\n- **调用**: store, markdown, webhook\n- **被用于**: Connect/gRPC-Gateway\n\n**复杂度评估**: High\n**潜在风险**: 📈 业务逻辑最复杂的服务",
+      "x": -900,
+      "y": 800,
+      "width": 420,
+      "height": 280,
+      "color": "3"
+    },
+    {
+      "id": "ai_service",
+      "type": "text",
+      "text": "**AI Service**\n`server/router/api/v1/ai_service.go`\n\n**核心职责**: AI 对话管理，包含会话创建/列表/删除、消息发送与 LLM 调用、配置查询\n\n**关键交互**:\n- **调用**: store, llm.Manager\n- **被用于**: Connect/gRPC-Gateway\n\n**复杂度评估**: Medium\n**潜在风险**: 依赖外部 LLM API",
+      "x": -400,
+      "y": 800,
+      "width": 400,
+      "height": 280,
+      "color": "3"
+    },
+    {
+      "id": "user_service",
+      "type": "text",
+      "text": "**User Service**\n`server/router/api/v1/user_service.go`\n\n**核心职责**: 用户管理，包含用户 CRUD、设置管理、统计数据、订阅关系\n\n**关键交互**:\n- **调用**: store\n- **被用于**: Connect/gRPC-Gateway\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 100,
+      "y": 800,
+      "width": 380,
+      "height": 260,
+      "color": "3"
+    },
+    {
+      "id": "attachment_service",
+      "type": "text",
+      "text": "**Attachment Service**\n`server/router/api/v1/attachment_service.go`\n\n**核心职责**: 附件管理，包含文件上传、缩略图生成（并发限制）、S3 存储集成\n\n**关键交互**:\n- **调用**: store, storage/s3\n- **被用于**: Connect/gRPC-Gateway\n\n**复杂度评估**: Medium\n**潜在风险**: 📈 大文件处理需关注内存",
+      "x": 560,
+      "y": 800,
+      "width": 400,
+      "height": 280,
+      "color": "3"
+    },
+    {
+      "id": "frontend_service",
+      "type": "text",
+      "text": "**Frontend Service**\n`server/router/frontend/`\n\n**核心职责**: SPA 静态文件服务，处理前端资源分发与路由回退\n\n**关键交互**:\n- **调用**: 静态文件系统\n- **被用于**: server.go\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 1100,
+      "y": 50,
+      "width": 360,
+      "height": 240,
+      "color": "2"
+    },
+    {
+      "id": "fileserver_service",
+      "type": "text",
+      "text": "**File Server**\n`server/router/fileserver/`\n\n**核心职责**: 原生 HTTP 文件服务，支持 Range Request（Safari 视频播放兼容）\n\n**关键交互**:\n- **调用**: store, 文件系统/S3\n- **被用于**: server.go\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 1100,
+      "y": 350,
+      "width": 360,
+      "height": 260,
+      "color": "2"
+    },
+    {
+      "id": "rss_service",
+      "type": "text",
+      "text": "**RSS Service**\n`server/router/rss/`\n\n**核心职责**: RSS Feed 生成，将用户公开 Memo 转换为标准 RSS 格式\n\n**关键交互**:\n- **调用**: store, markdown\n- **被用于**: server.go\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 1100,
+      "y": 670,
+      "width": 360,
+      "height": 240,
+      "color": "2"
+    },
+    {
+      "id": "runner_s3presign",
+      "type": "text",
+      "text": "**S3 Presign Runner**\n`server/runner/s3presign/`\n\n**核心职责**: 后台任务，定期刷新 S3 预签名 URL，确保附件访问链接有效性\n\n**关键交互**:\n- **调用**: store\n- **被用于**: server.go 后台\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 350,
+      "width": 360,
+      "height": 240,
+      "color": "2"
+    },
+    {
+      "id": "runner_memopayload",
+      "type": "text",
+      "text": "**Memo Payload Runner**\n`server/runner/memopayload/`\n\n**核心职责**: Memo 内容解析，提取标签、链接、任务等结构化数据到 Payload\n\n**关键交互**:\n- **调用**: markdown\n- **被用于**: memo_service\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 650,
+      "width": 360,
+      "height": 240,
+      "color": "2"
+    },
+    {
+      "id": "store_layer",
+      "type": "text",
+      "text": "**Store Layer**\n`store/store.go`\n\n**核心职责**: 数据访问层封装，提供缓存层（Instance Settings、Users、User Settings），统一的数据库操作接口\n\n**关键交互**:\n- **调用**: Driver (sqlite/mysql/postgres)\n- **被用于**: 所有 Service 层\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": -200,
+      "y": 1250,
+      "width": 420,
+      "height": 300,
+      "color": "5"
+    },
+    {
+      "id": "driver_interface",
+      "type": "text",
+      "text": "**Driver Interface**\n`store/driver.go`\n\n**核心职责**: 数据库驱动抽象接口，定义所有数据模型的 CRUD 方法签名（Memo、User、Attachment、AI 等）\n\n**关键交互**:\n- **调用**: 无（接口定义）\n- **被用于**: Store, DB 驱动实现\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": -200,
+      "y": 1620,
+      "width": 420,
+      "height": 280,
+      "color": "5"
+    },
+    {
+      "id": "sqlite_driver",
+      "type": "text",
+      "text": "**SQLite Driver**\n`store/db/sqlite/`\n\n**核心职责**: SQLite 数据库驱动实现，使用 modernc.org/sqlite 纯 Go 实现，支持 WAL 模式\n\n**关键交互**:\n- **调用**: database/sql\n- **被用于**: Driver 接口\n\n**复杂度评估**: High\n**潜在风险**: 无",
+      "x": -700,
+      "y": 2000,
+      "width": 380,
+      "height": 260,
+      "color": "5"
+    },
+    {
+      "id": "mysql_driver",
+      "type": "text",
+      "text": "**MySQL Driver**\n`store/db/mysql/`\n\n**核心职责**: MySQL 数据库驱动实现，使用 go-sql-driver/mysql\n\n**关键交互**:\n- **调用**: database/sql\n- **被用于**: Driver 接口\n\n**复杂度评估**: High\n**潜在风险**: 无",
+      "x": -200,
+      "y": 2000,
+      "width": 380,
+      "height": 220,
+      "color": "5"
+    },
+    {
+      "id": "postgres_driver",
+      "type": "text",
+      "text": "**PostgreSQL Driver**\n`store/db/postgres/`\n\n**核心职责**: PostgreSQL 数据库驱动实现，使用 lib/pq\n\n**关键交互**:\n- **调用**: database/sql\n- **被用于**: Driver 接口\n\n**复杂度评估**: High\n**潜在风险**: 无",
+      "x": 280,
+      "y": 2000,
+      "width": 380,
+      "height": 220,
+      "color": "5"
+    },
+    {
+      "id": "migrator",
+      "type": "text",
+      "text": "**Migrator**\n`store/migrator.go`\n\n**核心职责**: 数据库迁移管理，支持增量迁移、版本检查、Demo 模式数据种子\n\n**关键交互**:\n- **调用**: migration SQL 文件\n- **被用于**: Store 初始化\n\n**复杂度评估**: Medium\n**潜在风险**: ⚠️ 迁移失败可能导致数据不一致",
+      "x": 350,
+      "y": 1250,
+      "width": 400,
+      "height": 280,
+      "color": "5"
+    },
+    {
+      "id": "cache_layer",
+      "type": "text",
+      "text": "**Cache Layer**\n`store/cache/`\n\n**核心职责**: 内存缓存实现，支持 TTL（默认 10min）、自动清理（5min 间隔）、最大容量限制（1000 项）\n\n**关键交互**:\n- **调用**: 内存\n- **被用于**: Store\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 350,
+      "y": 1600,
+      "width": 400,
+      "height": 260,
+      "color": "5"
+    },
+    {
+      "id": "plugin_llm",
+      "type": "text",
+      "text": "**LLM Plugin**\n`plugin/llm/`\n\n**核心职责**: LLM 提供者管理，支持 OpenAI、DeepSeek 多提供者注册、默认配置、动态切换\n\n**关键交互**:\n- **调用**: OpenAI/DeepSeek API\n- **被用于**: AI Service\n\n**复杂度评估**: Medium\n**潜在风险**: 依赖外部 API 可用性",
+      "x": -1400,
+      "y": 1250,
+      "width": 400,
+      "height": 280,
+      "color": "4"
+    },
+    {
+      "id": "plugin_markdown",
+      "type": "text",
+      "text": "**Markdown Plugin**\n`plugin/markdown/`\n\n**核心职责**: Markdown 解析与渲染，基于 goldmark，支持自定义扩展（Tag、任务列表等）\n\n**关键交互**:\n- **调用**: goldmark\n- **被用于**: Memo Service, RSS\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": -1400,
+      "y": 1600,
+      "width": 400,
+      "height": 260,
+      "color": "4"
+    },
+    {
+      "id": "plugin_webhook",
+      "type": "text",
+      "text": "**Webhook Plugin**\n`plugin/webhook/`\n\n**核心职责**: Webhook 异步分发，支持 Memo 创建/更新/删除事件通知\n\n**关键交互**:\n- **调用**: HTTP Client\n- **被用于**: Memo Service\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": -1400,
+      "y": 1920,
+      "width": 400,
+      "height": 240,
+      "color": "4"
+    },
+    {
+      "id": "plugin_storage",
+      "type": "text",
+      "text": "**Storage Plugin (S3)**\n`plugin/storage/`\n\n**核心职责**: S3 兼容对象存储，支持预签名 URL、多存储后端\n\n**关键交互**:\n- **调用**: AWS S3 SDK\n- **被用于**: Attachment Service\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": -900,
+      "y": 1250,
+      "width": 400,
+      "height": 260,
+      "color": "4"
+    },
+    {
+      "id": "plugin_filter",
+      "type": "text",
+      "text": "**Filter Plugin (CEL)**\n`plugin/filter/`\n\n**核心职责**: CEL 表达式过滤引擎，支持 Memo 高级查询语法\n\n**关键交互**:\n- **调用**: CEL 引擎\n- **被用于**: Memo Service 列表查询\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": -900,
+      "y": 1570,
+      "width": 400,
+      "height": 240,
+      "color": "4"
+    },
+    {
+      "id": "plugin_scheduler",
+      "type": "text",
+      "text": "**Scheduler Plugin (Cron)**\n`plugin/cron/`\n\n**核心职责**: Cron 定时任务调度，支持链式中间件\n\n**关键交互**:\n- **调用**: 时间调度器\n- **被用于**: 后台任务\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": -900,
+      "y": 1870,
+      "width": 400,
+      "height": 220,
+      "color": "4"
+    },
+    {
+      "id": "proto_definitions",
+      "type": "text",
+      "text": "**Protocol Buffers**\n`proto/api/v1/`\n\n**核心职责**: API 契约定义，包含所有服务的请求/响应消息、RPC 方法签名\n\n**关键交互**:\n- **调用**: buf generate\n- **被用于**: 后端 Go / 前端 TypeScript\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 850,
+      "y": 1250,
+      "width": 400,
+      "height": 260,
+      "color": "2"
+    },
+    {
+      "id": "proto_gen_go",
+      "type": "text",
+      "text": "**Proto Gen (Go)**\n`proto/gen/api/v1/`\n\n**核心职责**: 生成的 Go 代码，包含 gRPC 服务接口、消息类型、序列化逻辑\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: API V1 Service\n\n**复杂度评估**: Low (生成代码)\n**潜在风险**: 无",
+      "x": 850,
+      "y": 1570,
+      "width": 400,
+      "height": 240,
+      "color": "2"
+    },
+    {
+      "id": "internal_profile",
+      "type": "text",
+      "text": "**Profile Config**\n`internal/profile/`\n\n**核心职责**: 运行时配置管理，包含端口、数据目录、数据库驱动、Demo 模式等\n\n**关键交互**:\n- **调用**: 环境变量/CLI 参数\n- **被用于**: main.go, server\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 1350,
+      "y": 1250,
+      "width": 380,
+      "height": 260,
+      "color": "2"
+    },
+    {
+      "id": "internal_util",
+      "type": "text",
+      "text": "**Utilities**\n`internal/util/`\n\n**核心职责**: 通用工具函数，UUID 生成、字符串处理等\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: 全局\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 1350,
+      "y": 1570,
+      "width": 380,
+      "height": 200,
+      "color": "2"
+    },
+    {
+      "id": "web_app",
+      "type": "text",
+      "text": "**React App**\n`web/src/App.tsx`\n\n**核心职责**: 前端应用根组件，负责 Context Provider 嵌套、路由出口、全局副作用（主题/语言/OAuth 清理）\n\n**关键交互**:\n- **调用**: Contexts, Hooks, Router\n- **被用于**: main.tsx 入口\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2000,
+      "y": -800,
+      "width": 420,
+      "height": 280,
+      "color": "6"
+    },
+    {
+      "id": "web_connect",
+      "type": "text",
+      "text": "**Connect Client**\n`web/src/connect.ts`\n\n**核心职责**: Connect RPC 客户端配置，包含 Auth 拦截器、Token 自动刷新、所有服务客户端实例化\n\n**关键交互**:\n- **调用**: @connectrpc/connect\n- **被用于**: 所有 Hooks\n\n**复杂度评估**: Medium\n**潜在风险**: 🔐 Token 刷新逻辑关键",
+      "x": 2000,
+      "y": -400,
+      "width": 420,
+      "height": 280,
+      "color": "6"
+    },
+    {
+      "id": "web_auth_context",
+      "type": "text",
+      "text": "**Auth Context**\n`web/src/contexts/AuthContext.tsx`\n\n**核心职责**: 用户认证状态管理，包含当前用户、设置、快捷方式，提供初始化/登出方法\n\n**关键交互**:\n- **调用**: connect (authServiceClient)\n- **被用于**: App.tsx, 所有需要用户状态的组件\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 0,
+      "width": 420,
+      "height": 280,
+      "color": "6"
+    },
+    {
+      "id": "web_memo_filter_context",
+      "type": "text",
+      "text": "**MemoFilter Context**\n`web/src/contexts/MemoFilterContext.tsx`\n\n**核心职责**: Memo 过滤状态管理，支持标签/日期/文本过滤、快捷方式选择、URL 同步\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: Memo 列表页面\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2050,
+      "y": 0,
+      "width": 420,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_view_context",
+      "type": "text",
+      "text": "**View Context**\n`web/src/contexts/ViewContext.tsx`\n\n**核心职责**: UI 视图偏好管理，包含布局模式（LIST/MASONRY）、排序顺序\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: 布局组件\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 2550,
+      "y": 0,
+      "width": 380,
+      "height": 240,
+      "color": "6"
+    },
+    {
+      "id": "web_ai_sidebar_context",
+      "type": "text",
+      "text": "**AISidebar Context**\n`web/src/contexts/AISidebarContext.tsx`\n\n**核心职责**: AI 侧边栏状态管理，控制打开/关闭、当前会话\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: AI Chat 组件\n\n**复杂度评估**: Low\n**潜在风险**: 无",
+      "x": 2550,
+      "y": 300,
+      "width": 380,
+      "height": 240,
+      "color": "6"
+    },
+    {
+      "id": "web_memo_queries",
+      "type": "text",
+      "text": "**useMemoQueries**\n`web/src/hooks/useMemoQueries.ts`\n\n**核心职责**: Memo 数据查询 Hooks，基于 React Query v5，支持无限分页、乐观更新、缓存管理\n\n**关键交互**:\n- **调用**: memoServiceClient\n- **被用于**: Memo 相关组件\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 350,
+      "width": 420,
+      "height": 280,
+      "color": "6"
+    },
+    {
+      "id": "web_user_queries",
+      "type": "text",
+      "text": "**useUserQueries**\n`web/src/hooks/useUserQueries.ts`\n\n**核心职责**: 用户数据查询 Hooks，包含用户详情、统计、设置操作\n\n**关键交互**:\n- **调用**: userServiceClient\n- **被用于**: 用户相关组件\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2050,
+      "y": 350,
+      "width": 420,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_ai_queries",
+      "type": "text",
+      "text": "**useAIQueries**\n`web/src/hooks/useAIQueries.ts`\n\n**核心职责**: AI 功能查询 Hooks，包含会话管理、消息发送\n\n**关键交互**:\n- **调用**: aiServiceClient\n- **被用于**: AI Chat 组件\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2550,
+      "y": 620,
+      "width": 380,
+      "height": 240,
+      "color": "6"
+    },
+    {
+      "id": "web_pages_home",
+      "type": "text",
+      "text": "**Home Page**\n`web/src/pages/Home.tsx`\n\n**核心职责**: 主页面，展示 Memo 列表、编辑器、过滤器\n\n**关键交互**:\n- **调用**: useMemoQueries, MemoEditor, PagedMemoList\n- **被用于**: Router\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 720,
+      "width": 380,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_pages_memo_detail",
+      "type": "text",
+      "text": "**MemoDetail Page**\n`web/src/pages/MemoDetail.tsx`\n\n**核心职责**: Memo 详情页，展示单个 Memo、评论、关系图\n\n**关键交互**:\n- **调用**: useMemo, MemoView, MemoDetailSidebar\n- **被用于**: Router\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2000,
+      "y": 720,
+      "width": 400,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_pages_ai_chat",
+      "type": "text",
+      "text": "**AIChat Page**\n`web/src/pages/AIChat.tsx`\n\n**核心职责**: AI 聊天页面，管理会话列表、消息交互\n\n**关键交互**:\n- **调用**: useAIQueries, AIChat 组件\n- **被用于**: Router\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2480,
+      "y": 950,
+      "width": 380,
+      "height": 240,
+      "color": "6"
+    },
+    {
+      "id": "web_components_memo_editor",
+      "type": "text",
+      "text": "**MemoEditor**\n`web/src/components/MemoEditor/`\n\n**核心职责**: Memo 编辑器组件，支持 Markdown 编辑、附件上传、标签自动补全\n\n**关键交互**:\n- **调用**: useCreateMemo, useUpdateMemo\n- **被用于**: Home, MemoDetail\n\n**复杂度评估**: High\n**潜在风险**: 无",
+      "x": 1550,
+      "y": 1050,
+      "width": 400,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_components_memo_view",
+      "type": "text",
+      "text": "**MemoView**\n`web/src/components/MemoView/`\n\n**核心职责**: Memo 展示组件，渲染 Markdown 内容、附件、反应、元数据\n\n**关键交互**:\n- **调用**: MarkdownRenderer, MemoAttachment\n- **被用于**: 列表、详情页\n\n**复杂度评估**: Medium\n**潜在风险**: 无",
+      "x": 2020,
+      "y": 1050,
+      "width": 380,
+      "height": 260,
+      "color": "6"
+    },
+    {
+      "id": "web_proto_types",
+      "type": "text",
+      "text": "**Proto Types (TS)**\n`web/src/types/proto/`\n\n**核心职责**: 生成的 TypeScript 类型定义，包含所有 API 消息和服务接口\n\n**关键交互**:\n- **调用**: 无\n- **被用于**: 所有前端代码\n\n**复杂度评估**: Low (生成代码)\n**潜在风险**: 无",
+      "x": 2480,
+      "y": 1260,
+      "width": 380,
+      "height": 240,
+      "color": "6"
+    },
+    {
+      "id": "group_backend_entry",
+      "type": "text",
+      "text": "## 🚀 入口层\n应用启动与服务器初始化",
+      "x": -120,
+      "y": -900,
+      "width": 260,
+      "height": 80,
+      "color": "1"
+    },
+    {
+      "id": "group_api_layer",
+      "type": "text",
+      "text": "## 🔌 API 层\ngRPC-Gateway + Connect RPC 双协议",
+      "x": -120,
+      "y": -80,
+      "width": 300,
+      "height": 80,
+      "color": "3"
+    },
+    {
+      "id": "group_service_layer",
+      "type": "text",
+      "text": "## ⚙️ 服务层\n核心业务逻辑实现",
+      "x": -120,
+      "y": 700,
+      "width": 280,
+      "height": 80,
+      "color": "3"
+    },
+    {
+      "id": "group_data_layer",
+      "type": "text",
+      "text": "## 💾 数据层\n多数据库驱动 + 缓存",
+      "x": -120,
+      "y": 1150,
+      "width": 280,
+      "height": 80,
+      "color": "5"
+    },
+    {
+      "id": "group_plugin_layer",
+      "type": "text",
+      "text": "## 🔧 插件层\n可扩展功能模块",
+      "x": -1200,
+      "y": 1150,
+      "width": 260,
+      "height": 80,
+      "color": "4"
+    },
+    {
+      "id": "group_frontend",
+      "type": "text",
+      "text": "## 🖥️ 前端层\nReact 18 + TypeScript + Vite",
+      "x": 2150,
+      "y": -900,
+      "width": 320,
+      "height": 80,
+      "color": "6"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_main_server",
+      "fromNode": "entry_main",
+      "fromSide": "bottom",
+      "toNode": "server_core",
+      "toSide": "top",
+      "label": "初始化服务器"
+    },
+    {
+      "id": "edge_server_api",
+      "fromNode": "server_core",
+      "fromSide": "bottom",
+      "toNode": "api_v1_service",
+      "toSide": "top",
+      "label": "注册 API 服务"
+    },
+    {
+      "id": "edge_server_auth",
+      "fromNode": "server_core",
+      "fromSide": "right",
+      "toNode": "auth_module",
+      "toSide": "top",
+      "label": "认证配置"
+    },
+    {
+      "id": "edge_server_frontend",
+      "fromNode": "server_core",
+      "fromSide": "right",
+      "toNode": "frontend_service",
+      "toSide": "left",
+      "label": "静态文件服务"
+    },
+    {
+      "id": "edge_server_fileserver",
+      "fromNode": "server_core",
+      "fromSide": "right",
+      "toNode": "fileserver_service",
+      "toSide": "left",
+      "label": "文件服务"
+    },
+    {
+      "id": "edge_server_rss",
+      "fromNode": "server_core",
+      "fromSide": "right",
+      "toNode": "rss_service",
+      "toSide": "left",
+      "label": "RSS 服务"
+    },
+    {
+      "id": "edge_server_s3runner",
+      "fromNode": "server_core",
+      "fromSide": "right",
+      "toNode": "runner_s3presign",
+      "toSide": "top",
+      "label": "后台任务"
+    },
+    {
+      "id": "edge_api_connect",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "connect_handler",
+      "toSide": "top",
+      "label": "Connect 协议"
+    },
+    {
+      "id": "edge_api_gateway",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "grpc_gateway",
+      "toSide": "top",
+      "label": "REST 协议"
+    },
+    {
+      "id": "edge_api_memo",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "memo_service",
+      "toSide": "top",
+      "label": "Memo 业务"
+    },
+    {
+      "id": "edge_api_ai",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "ai_service",
+      "toSide": "top",
+      "label": "AI 业务"
+    },
+    {
+      "id": "edge_api_user",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "user_service",
+      "toSide": "top",
+      "label": "用户业务"
+    },
+    {
+      "id": "edge_api_attachment",
+      "fromNode": "api_v1_service",
+      "fromSide": "bottom",
+      "toNode": "attachment_service",
+      "toSide": "top",
+      "label": "附件业务"
+    },
+    {
+      "id": "edge_auth_store",
+      "fromNode": "auth_module",
+      "fromSide": "bottom",
+      "toNode": "store_layer",
+      "toSide": "right",
+      "label": "用户/Token 查询"
+    },
+    {
+      "id": "edge_memo_store",
+      "fromNode": "memo_service",
+      "fromSide": "bottom",
+      "toNode": "store_layer",
+      "toSide": "top",
+      "label": "数据访问"
+    },
+    {
+      "id": "edge_ai_store",
+      "fromNode": "ai_service",
+      "fromSide": "bottom",
+      "toNode": "store_layer",
+      "toSide": "top",
+      "label": "会话/消息存储"
+    },
+    {
+      "id": "edge_user_store",
+      "fromNode": "user_service",
+      "fromSide": "bottom",
+      "toNode": "store_layer",
+      "toSide": "top",
+      "label": "数据访问"
+    },
+    {
+      "id": "edge_attachment_store",
+      "fromNode": "attachment_service",
+      "fromSide": "bottom",
+      "toNode": "store_layer",
+      "toSide": "right",
+      "label": "数据访问"
+    },
+    {
+      "id": "edge_ai_llm",
+      "fromNode": "ai_service",
+      "fromSide": "left",
+      "toNode": "plugin_llm",
+      "toSide": "top",
+      "label": "LLM 调用"
+    },
+    {
+      "id": "edge_memo_markdown",
+      "fromNode": "memo_service",
+      "fromSide": "left",
+      "toNode": "plugin_markdown",
+      "toSide": "right",
+      "label": "内容解析"
+    },
+    {
+      "id": "edge_memo_webhook",
+      "fromNode": "memo_service",
+      "fromSide": "left",
+      "toNode": "plugin_webhook",
+      "toSide": "right",
+      "label": "事件通知"
+    },
+    {
+      "id": "edge_attachment_storage",
+      "fromNode": "attachment_service",
+      "fromSide": "left",
+      "toNode": "plugin_storage",
+      "toSide": "right",
+      "label": "S3 存储"
+    },
+    {
+      "id": "edge_memo_filter",
+      "fromNode": "memo_service",
+      "fromSide": "left",
+      "toNode": "plugin_filter",
+      "toSide": "right",
+      "label": "CEL 过滤"
+    },
+    {
+      "id": "edge_store_driver",
+      "fromNode": "store_layer",
+      "fromSide": "bottom",
+      "toNode": "driver_interface",
+      "toSide": "top",
+      "label": "驱动接口"
+    },
+    {
+      "id": "edge_store_cache",
+      "fromNode": "store_layer",
+      "fromSide": "right",
+      "toNode": "cache_layer",
+      "toSide": "left",
+      "label": "缓存层"
+    },
+    {
+      "id": "edge_store_migrator",
+      "fromNode": "store_layer",
+      "fromSide": "right",
+      "toNode": "migrator",
+      "toSide": "left",
+      "label": "迁移管理"
+    },
+    {
+      "id": "edge_driver_sqlite",
+      "fromNode": "driver_interface",
+      "fromSide": "bottom",
+      "toNode": "sqlite_driver",
+      "toSide": "top",
+      "label": "SQLite 实现"
+    },
+    {
+      "id": "edge_driver_mysql",
+      "fromNode": "driver_interface",
+      "fromSide": "bottom",
+      "toNode": "mysql_driver",
+      "toSide": "top",
+      "label": "MySQL 实现"
+    },
+    {
+      "id": "edge_driver_postgres",
+      "fromNode": "driver_interface",
+      "fromSide": "bottom",
+      "toNode": "postgres_driver",
+      "toSide": "top",
+      "label": "PostgreSQL 实现"
+    },
+    {
+      "id": "edge_proto_gen",
+      "fromNode": "proto_definitions",
+      "fromSide": "bottom",
+      "toNode": "proto_gen_go",
+      "toSide": "top",
+      "label": "buf generate"
+    },
+    {
+      "id": "edge_api_proto",
+      "fromNode": "api_v1_service",
+      "fromSide": "right",
+      "toNode": "proto_gen_go",
+      "toSide": "left",
+      "label": "类型定义"
+    },
+    {
+      "id": "edge_main_profile",
+      "fromNode": "entry_main",
+      "fromSide": "right",
+      "toNode": "internal_profile",
+      "toSide": "top",
+      "label": "配置加载"
+    },
+    {
+      "id": "edge_runner_markdown",
+      "fromNode": "runner_memopayload",
+      "fromSide": "left",
+      "toNode": "plugin_markdown",
+      "toSide": "right",
+      "label": "Markdown 解析"
+    },
+    {
+      "id": "edge_webapp_connect",
+      "fromNode": "web_app",
+      "fromSide": "bottom",
+      "toNode": "web_connect",
+      "toSide": "top",
+      "label": "RPC 客户端"
+    },
+    {
+      "id": "edge_connect_auth_ctx",
+      "fromNode": "web_connect",
+      "fromSide": "bottom",
+      "toNode": "web_auth_context",
+      "toSide": "top",
+      "label": "认证服务"
+    },
+    {
+      "id": "edge_app_filter_ctx",
+      "fromNode": "web_app",
+      "fromSide": "bottom",
+      "toNode": "web_memo_filter_context",
+      "toSide": "top",
+      "label": "Provider"
+    },
+    {
+      "id": "edge_app_view_ctx",
+      "fromNode": "web_app",
+      "fromSide": "right",
+      "toNode": "web_view_context",
+      "toSide": "top",
+      "label": "Provider"
+    },
+    {
+      "id": "edge_app_ai_ctx",
+      "fromNode": "web_app",
+      "fromSide": "right",
+      "toNode": "web_ai_sidebar_context",
+      "toSide": "top",
+      "label": "Provider"
+    },
+    {
+      "id": "edge_auth_memo_queries",
+      "fromNode": "web_auth_context",
+      "fromSide": "bottom",
+      "toNode": "web_memo_queries",
+      "toSide": "top",
+      "label": "缓存预填充"
+    },
+    {
+      "id": "edge_connect_memo_queries",
+      "fromNode": "web_connect",
+      "fromSide": "bottom",
+      "toNode": "web_memo_queries",
+      "toSide": "top",
+      "label": "memoServiceClient"
+    },
+    {
+      "id": "edge_connect_user_queries",
+      "fromNode": "web_connect",
+      "fromSide": "bottom",
+      "toNode": "web_user_queries",
+      "toSide": "top",
+      "label": "userServiceClient"
+    },
+    {
+      "id": "edge_connect_ai_queries",
+      "fromNode": "web_connect",
+      "fromSide": "right",
+      "toNode": "web_ai_queries",
+      "toSide": "top",
+      "label": "aiServiceClient"
+    },
+    {
+      "id": "edge_queries_home",
+      "fromNode": "web_memo_queries",
+      "fromSide": "bottom",
+      "toNode": "web_pages_home",
+      "toSide": "top",
+      "label": "数据获取"
+    },
+    {
+      "id": "edge_queries_detail",
+      "fromNode": "web_memo_queries",
+      "fromSide": "bottom",
+      "toNode": "web_pages_memo_detail",
+      "toSide": "top",
+      "label": "数据获取"
+    },
+    {
+      "id": "edge_ai_queries_chat",
+      "fromNode": "web_ai_queries",
+      "fromSide": "bottom",
+      "toNode": "web_pages_ai_chat",
+      "toSide": "top",
+      "label": "数据获取"
+    },
+    {
+      "id": "edge_home_editor",
+      "fromNode": "web_pages_home",
+      "fromSide": "bottom",
+      "toNode": "web_components_memo_editor",
+      "toSide": "top",
+      "label": "编辑器组件"
+    },
+    {
+      "id": "edge_detail_view",
+      "fromNode": "web_pages_memo_detail",
+      "fromSide": "bottom",
+      "toNode": "web_components_memo_view",
+      "toSide": "top",
+      "label": "展示组件"
+    },
+    {
+      "id": "edge_proto_ts",
+      "fromNode": "proto_definitions",
+      "fromSide": "right",
+      "toNode": "web_proto_types",
+      "toSide": "left",
+      "label": "TypeScript 生成"
+    },
+    {
+      "id": "edge_connect_proto",
+      "fromNode": "web_connect",
+      "fromSide": "bottom",
+      "toNode": "web_proto_types",
+      "toSide": "top",
+      "label": "类型导入"
+    },
+    {
+      "id": "edge_connect_backend",
+      "fromNode": "web_connect",
+      "fromSide": "left",
+      "toNode": "connect_handler",
+      "toSide": "right",
+      "color": "4",
+      "label": "Connect RPC 调用"
+    }
+  ]
+}

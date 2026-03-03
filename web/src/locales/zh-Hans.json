@@ -332,6 +332,7 @@
       "delete-success": "捷径 `{{title}}` 删除成功"
     },
     "sso": "单点登录",
+    "ragflow": "RAGFlow 同步",
     "sso-section": {
       "authorization-endpoint": "授权端点（Authorization Endpoint）",
       "client-id": "客户端ID（Client ID）",

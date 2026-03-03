@@ -2,6 +2,7 @@ package v1
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -11,10 +12,12 @@ import (
 	"golang.org/x/sync/semaphore"
 
 	"github.com/usememos/memos/internal/profile"
-	"github.com/usememos/memos/plugin/llm"
+	"github.com/usememos/memos/plugin/dashscope"
 	"github.com/usememos/memos/plugin/markdown"
+	"github.com/usememos/memos/plugin/ragflow"
 	v1pb "github.com/usememos/memos/proto/gen/api/v1"
 	"github.com/usememos/memos/server/auth"
+	"github.com/usememos/memos/server/runner/ragflowsync"
 	"github.com/usememos/memos/store"
 )
 
@@ -28,18 +31,30 @@ type APIV1Service struct {
 	v1pb.UnimplementedActivityServiceServer
 	v1pb.UnimplementedIdentityProviderServiceServer
 	v1pb.UnimplementedAIServiceServer
+	v1pb.UnimplementedRAGFlowServiceServer
+	v1pb.UnimplementedLLMServiceServer
+	v1pb.UnimplementedChatSettingsServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
 	Store           *store.Store
 	MarkdownService markdown.Service
-	LLMManager      *llm.Manager
+	RAGFlowClient   *ragflow.Client // 替代原有的 LLMManager
+
+	// RAGFlow Provisioner - 用户无感知的 RAGFlow 账户自动配置
+	RAGFlowProvisioner *ragflow.Provisioner
+
+	// RAGFlow 同步 Runner - 用于触发同步事件
+	RAGFlowSyncRunner *ragflowsync.Runner
+
+	// DashScope 客户端 - 用于获取可用 LLM 模型列表
+	DashScopeClient *dashscope.Client
 
 	// thumbnailSemaphore limits concurrent thumbnail generation to prevent memory exhaustion
 	thumbnailSemaphore *semaphore.Weighted
 }
 
-func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, llmManager *llm.Manager) *APIV1Service {
+func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store, ragflowClient *ragflow.Client, ragflowProvisioner *ragflow.Provisioner, ragflowSyncRunner *ragflowsync.Runner, dashScopeClient *dashscope.Client) *APIV1Service {
 	markdownService := markdown.NewService(
 		markdown.WithTagExtension(),
 	)
@@ -48,7 +63,10 @@ func NewAPIV1Service(secret string, profile *profile.Profile, store *store.Store
 		Profile:            profile,
 		Store:              store,
 		MarkdownService:    markdownService,
-		LLMManager:         llmManager,
+		RAGFlowClient:      ragflowClient,
+		RAGFlowProvisioner: ragflowProvisioner,
+		RAGFlowSyncRunner:  ragflowSyncRunner,
+		DashScopeClient:    dashScopeClient,
 		thumbnailSemaphore: semaphore.NewWeighted(3), // Limit to 3 concurrent thumbnail generations
 	}
 }
@@ -118,11 +136,26 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	if err := v1pb.RegisterAIServiceHandlerServer(ctx, gwMux, s); err != nil {
 		return err
 	}
+	if err := v1pb.RegisterLLMServiceHandlerServer(ctx, gwMux, s); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterChatSettingsServiceHandlerServer(ctx, gwMux, s); err != nil {
+		return err
+	}
 	gwGroup := echoServer.Group("")
 	gwGroup.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 	}))
 	handler := echo.WrapHandler(gwMux)
+
+	// Register SSE streaming route BEFORE the wildcard /api/v1/* to prevent
+	// gRPC-Gateway from intercepting it. Echo matches more specific routes first
+	// only within the same group; the wildcard Any("/api/v1/*") would otherwise
+	// swallow this path and return gRPC 404.
+	gwGroup.POST("/api/v1/ai/conversations/:conversationId/messages/stream", s.handleStreamMessage)
+
+	// RAGFlow chunk image proxy — registered before wildcard to avoid gRPC-Gateway interception
+	gwGroup.GET("/api/v1/ragflow/image/:imageId", s.handleRAGFlowImage)
 
 	gwGroup.Any("/api/v1/*", handler)
 	gwGroup.Any("/file/*", handler)
@@ -152,4 +185,44 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 	connectGroup.Any("/memos.api.v1.*", echo.WrapHandler(connectMux))
 
 	return nil
+}
+
+// getUserRAGFlowClient 获取绑定了用户 API Key 的 RAGFlow 客户端
+// 优先通过 Provisioner 自动配置（注册/登录/生成 API Key），实现用户无感知接入
+// 如果 Provisioner 未配置，降级到被动查询 ragflow_user_mapping 表
+func (s *APIV1Service) getUserRAGFlowClient(ctx context.Context, userID int32) *ragflow.Client {
+	// 优先路径：通过 Provisioner 自动配置（P2 核心能力）
+	if s.RAGFlowProvisioner != nil {
+		// 获取用户信息（Provisioner 需要 username 生成 RAGFlow 邮箱）
+		user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
+		if err != nil || user == nil {
+			slog.Warn("getUserRAGFlowClient: 获取用户信息失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			return nil
+		}
+
+		client, err := s.RAGFlowProvisioner.GetClientForUser(ctx, userID, user.Username)
+		if err != nil {
+			slog.Warn("getUserRAGFlowClient: Provisioner 自动配置失败",
+				slog.Int("userID", int(userID)),
+				slog.Any("error", err))
+			return nil
+		}
+		return client
+	}
+
+	// 降级路径：被动查询映射表（Provisioner 未配置时的兼容模式）
+	if s.RAGFlowClient == nil {
+		return nil
+	}
+
+	mapping, err := s.Store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
+		UserID: &userID,
+	})
+	if err != nil || mapping == nil || mapping.APIKey == "" {
+		return nil
+	}
+
+	return s.RAGFlowClient.WithAPIKey(mapping.APIKey)
 }

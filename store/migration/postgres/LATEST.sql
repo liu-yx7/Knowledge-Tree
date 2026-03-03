@@ -107,6 +107,7 @@ CREATE TABLE reaction (
 );
 
 -- ai_conversation: stores AI chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE ai_conversation (
   id SERIAL PRIMARY KEY,
   uid TEXT NOT NULL UNIQUE,
@@ -114,23 +115,24 @@ CREATE TABLE ai_conversation (
   title TEXT NOT NULL DEFAULT 'New Chat',
   created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
   updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  row_status TEXT NOT NULL DEFAULT 'NORMAL',
-  model TEXT NOT NULL DEFAULT '',
-  provider TEXT NOT NULL DEFAULT ''
+  row_status TEXT NOT NULL DEFAULT 'NORMAL'
 );
 
 CREATE INDEX idx_ai_conversation_user_id ON ai_conversation(user_id);
 CREATE INDEX idx_ai_conversation_created_ts ON ai_conversation(created_ts);
 
 -- ai_message: stores individual messages in AI conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE ai_message (
   id SERIAL PRIMARY KEY,
   uid TEXT NOT NULL UNIQUE,
   conversation_id INTEGER NOT NULL REFERENCES ai_conversation(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
   content TEXT NOT NULL DEFAULT '',
-  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
-  token_count INTEGER NOT NULL DEFAULT 0
+  reasoning_content TEXT NOT NULL DEFAULT '',
+  references_json TEXT NOT NULL DEFAULT '',
+  token_usage_json TEXT NOT NULL DEFAULT '',
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())
 );
 
 CREATE INDEX idx_ai_message_conversation_id ON ai_message(conversation_id);
@@ -147,3 +149,67 @@ CREATE TABLE subscription (
 
 CREATE INDEX idx_subscription_follower_id ON subscription(follower_id);
 CREATE INDEX idx_subscription_following_id ON subscription(following_id);
+
+-- ==================== RAGFlow 用户映射表 ====================
+-- 记录用户与 RAGFlow Dataset/Assistant 的映射关系
+
+CREATE TABLE ragflow_user_mapping (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE,
+  dataset_id VARCHAR(255) NOT NULL,
+  dataset_name VARCHAR(255) NOT NULL DEFAULT '',
+  assistant_id VARCHAR(255) NOT NULL DEFAULT '',
+  document_count INT NOT NULL DEFAULT 0,
+  last_sync_ts BIGINT,
+  ragflow_user_id VARCHAR(255) NOT NULL DEFAULT '',
+  ragflow_email VARCHAR(255) NOT NULL DEFAULT '',
+  ragflow_password VARCHAR(255) NOT NULL DEFAULT '',
+  api_key VARCHAR(255) NOT NULL DEFAULT '',
+  llm_configured BOOLEAN NOT NULL DEFAULT FALSE,
+  preferred_llm_id VARCHAR(255) NOT NULL DEFAULT '',
+  dataset_ids TEXT NOT NULL DEFAULT '[]',
+  quote_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  reasoning_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_ragflow_user_mapping_user_id ON ragflow_user_mapping(user_id);
+
+-- ==================== 内容同步状态表 ====================
+-- 记录每个内容项（Memo/Attachment）的 RAGFlow 同步状态
+
+DO $$ BEGIN
+  CREATE TYPE content_type_enum AS ENUM ('memo', 'attachment');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE ragflow_status_enum AS ENUM ('pending', 'synced', 'failed', 'skipped');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE content_sync_state (
+  id SERIAL PRIMARY KEY,
+  content_type content_type_enum NOT NULL,
+  content_uid VARCHAR(255) NOT NULL,
+  owner_id INT NOT NULL,
+  ragflow_status ragflow_status_enum NOT NULL DEFAULT 'pending',
+  ragflow_dataset_id VARCHAR(255) NOT NULL DEFAULT '',
+  ragflow_document_id VARCHAR(255) NOT NULL DEFAULT '',
+  ragflow_synced_ts BIGINT,
+  ragflow_error TEXT NOT NULL DEFAULT '',
+  content_hash VARCHAR(64) NOT NULL DEFAULT '',
+  retry_count INT NOT NULL DEFAULT 0,
+  next_retry_ts BIGINT,
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  UNIQUE(content_type, content_uid)
+);
+
+CREATE INDEX idx_content_sync_state_owner_id ON content_sync_state(owner_id);
+CREATE INDEX idx_content_sync_state_status ON content_sync_state(ragflow_status);
+CREATE INDEX idx_content_sync_state_retry ON content_sync_state(next_retry_ts) WHERE ragflow_status IN ('pending', 'failed');

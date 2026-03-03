@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "gen/api/v1";
+
+// ChatSettingsService 提供 AI 聊天设置管理功能
+// 用于管理用户的 Dataset 选择和对话选项
+service ChatSettingsService {
+  // ListDatasets 获取用户可用的 Dataset 列表
+  rpc ListDatasets(ListDatasetsRequest) returns (ListDatasetsResponse) {
+    option (google.api.http) = {get: "/api/v1/chat/datasets"};
+  }
+
+  // GetChatSettings 获取用户的聊天设置
+  rpc GetChatSettings(GetChatSettingsRequest) returns (ChatSettings) {
+    option (google.api.http) = {get: "/api/v1/chat/settings"};
+  }
+
+  // UpdateChatSettings 更新用户的聊天设置
+  // 会同步更新 RAGFlow Assistant 的 Dataset 配置
+  rpc UpdateChatSettings(UpdateChatSettingsRequest) returns (ChatSettings) {
+    option (google.api.http) = {
+      patch: "/api/v1/chat/settings"
+      body: "*"
+    };
+  }
+}
+
+// ==================== Dataset 列表 ====================
+
+message ListDatasetsRequest {}
+
+message ListDatasetsResponse {
+  // 用户可用的 Dataset 列表
+  repeated Dataset datasets = 1;
+}
+
+// Dataset 表示一个知识库
+message Dataset {
+  // Dataset ID
+  string id = 1;
+
+  // Dataset 名称
+  string name = 2;
+
+  // Dataset 描述
+  string description = 3;
+
+  // 文档数量
+  int32 document_count = 4;
+
+  // 是否为当前用户的默认 Dataset
+  bool is_default = 5;
+}
+
+// ==================== 聊天设置 ====================
+
+message GetChatSettingsRequest {}
+
+message UpdateChatSettingsRequest {
+  // 选择的 Dataset ID 列表（可选，不传则不更新）
+  repeated string dataset_ids = 1 [(google.api.field_behavior) = OPTIONAL];
+
+  // RAG 引用开关（可选，不传则不更新）
+  optional bool quote_enabled = 2 [(google.api.field_behavior) = OPTIONAL];
+
+  // 深度研究（Reasoning）开关（可选，不传则不更新）
+  optional bool reasoning_enabled = 3 [(google.api.field_behavior) = OPTIONAL];
+}
+
+message ChatSettings {
+  // 当前选择的 Dataset ID 列表
+  repeated string dataset_ids = 1;
+
+  // RAG 引用开关状态（默认 true）
+  bool quote_enabled = 2;
+
+  // 深度研究（Reasoning）开关状态（默认 false）
+  bool reasoning_enabled = 3;
+
+  // 可用的 Dataset 列表（方便前端渲染）
+  repeated Dataset available_datasets = 4;
+}

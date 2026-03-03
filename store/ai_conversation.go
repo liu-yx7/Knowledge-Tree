@@ -3,6 +3,8 @@ package store
 import "context"
 
 // AIConversation represents an AI chat conversation.
+// P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
+// 模型/提供商由 RAGFlow Chat Assistant 配置管理，不在对话级别选择
 type AIConversation struct {
 	ID        int32
 	UID       string
@@ -11,8 +13,6 @@ type AIConversation struct {
 	CreatedTs int64
 	UpdatedTs int64
 	RowStatus RowStatus
-	Model     string
-	Provider  string
 }
 
 // FindAIConversation specifies filter criteria for finding conversations.
@@ -29,20 +29,31 @@ type FindAIConversation struct {
 type UpdateAIConversation struct {
 	ID        int32
 	Title     *string
-	Model     *string
-	Provider  *string
 	RowStatus *RowStatus
 	UpdatedTs *int64
 }
 
 // DeleteAIConversation specifies which conversation to delete.
 type DeleteAIConversation struct {
-	ID int32
+	ID     int32
+	UserID *int32
 }
 
 // CreateAIConversation creates a new AI conversation.
 func (s *Store) CreateAIConversation(ctx context.Context, create *AIConversation) (*AIConversation, error) {
 	return s.driver.CreateAIConversation(ctx, create)
+}
+
+// GetAIConversation returns a single conversation matching the filter.
+func (s *Store) GetAIConversation(ctx context.Context, find *FindAIConversation) (*AIConversation, error) {
+	list, err := s.driver.ListAIConversations(ctx, find)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, nil
+	}
+	return list[0], nil
 }
 
 // ListAIConversations returns conversations matching the filter.

@@ -32,6 +32,12 @@ type Profile struct {
 	Version string
 	// InstanceURL is the url of your memos instance.
 	InstanceURL string
+
+	// ==================== RAGFlow 配置 ====================
+	// RAGFlowBaseURL RAGFlow 服务地址
+	// 这是唯一的系统级 RAGFlow 配置
+	// APIKey 通过 per-user Provisioning 自动获取，不在此配置
+	RAGFlowBaseURL string
 }
 
 func checkDataDir(dataDir string) (string, error) {

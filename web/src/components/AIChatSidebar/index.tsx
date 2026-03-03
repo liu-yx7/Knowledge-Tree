@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { GripVertical } from "lucide-react";
 import { useAISidebar } from "@/contexts/AISidebarContext";
-import { useAIConfig } from "@/hooks/useAIQueries";
+import { useSyncStatus } from "@/hooks/useRAGFlowQueries";
 import useMediaQuery from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 import AIChatSidebarContent from "./AIChatSidebarContent";
@@ -9,7 +9,7 @@ import AIChatSidebarToggle from "./AIChatSidebarToggle";
 
 const AIChatSidebar = () => {
   const { isOpen, closeSidebar, toggleSidebar, width, setWidth, minWidth, maxWidth } = useAISidebar();
-  const { data: aiConfig } = useAIConfig();
+  const { data: syncStatus } = useSyncStatus();
   const md = useMediaQuery("md");
   const [isResizing, setIsResizing] = useState(false);
 
@@ -65,8 +65,8 @@ const AIChatSidebar = () => {
     };
   }, [isResizing, setWidth]);
 
-  // Don't render anything if AI is not enabled
-  if (!aiConfig?.enabled) return null;
+  // Don't render anything if RAGFlow sync status is unhealthy
+  if (!syncStatus?.healthy) return null;
 
   return (
     <>

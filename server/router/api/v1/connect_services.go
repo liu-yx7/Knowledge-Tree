@@ -588,3 +588,97 @@ func (s *ConnectServiceHandler) GetAIConfig(ctx context.Context, req *connect.Re
 	}
 	return connect.NewResponse(resp), nil
 }
+
+// RAGFlowService
+
+func (s *ConnectServiceHandler) GetSyncStatus(ctx context.Context, req *connect.Request[v1pb.GetSyncStatusRequest]) (*connect.Response[v1pb.SyncStatus], error) {
+	resp, err := s.APIV1Service.GetSyncStatus(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetSyncStats(ctx context.Context, req *connect.Request[v1pb.GetSyncStatsRequest]) (*connect.Response[v1pb.SyncStats], error) {
+	resp, err := s.APIV1Service.GetSyncStats(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) TriggerSync(ctx context.Context, req *connect.Request[v1pb.TriggerSyncRequest]) (*connect.Response[emptypb.Empty], error) {
+	resp, err := s.APIV1Service.TriggerSync(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) SemanticSearch(ctx context.Context, req *connect.Request[v1pb.SemanticSearchRequest]) (*connect.Response[v1pb.SemanticSearchResponse], error) {
+	resp, err := s.APIV1Service.SemanticSearch(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) ListContentSyncStates(ctx context.Context, req *connect.Request[v1pb.ListContentSyncStatesRequest]) (*connect.Response[v1pb.ListContentSyncStatesResponse], error) {
+	resp, err := s.APIV1Service.ListContentSyncStates(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// LLMService
+
+func (s *ConnectServiceHandler) ListAvailableModels(ctx context.Context, req *connect.Request[v1pb.ListAvailableModelsRequest]) (*connect.Response[v1pb.ListAvailableModelsResponse], error) {
+	resp, err := s.APIV1Service.ListAvailableModels(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetUserLLMPreference(ctx context.Context, req *connect.Request[v1pb.GetUserLLMPreferenceRequest]) (*connect.Response[v1pb.UserLLMPreference], error) {
+	resp, err := s.APIV1Service.GetUserLLMPreference(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) SetUserLLMPreference(ctx context.Context, req *connect.Request[v1pb.SetUserLLMPreferenceRequest]) (*connect.Response[v1pb.UserLLMPreference], error) {
+	resp, err := s.APIV1Service.SetUserLLMPreference(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ChatSettingsService
+
+func (s *ConnectServiceHandler) ListDatasets(ctx context.Context, req *connect.Request[v1pb.ListDatasetsRequest]) (*connect.Response[v1pb.ListDatasetsResponse], error) {
+	resp, err := s.APIV1Service.ListDatasets(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetChatSettings(ctx context.Context, req *connect.Request[v1pb.GetChatSettingsRequest]) (*connect.Response[v1pb.ChatSettings], error) {
+	resp, err := s.APIV1Service.GetChatSettings(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) UpdateChatSettings(ctx context.Context, req *connect.Request[v1pb.UpdateChatSettingsRequest]) (*connect.Response[v1pb.ChatSettings], error) {
+	resp, err := s.APIV1Service.UpdateChatSettings(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}

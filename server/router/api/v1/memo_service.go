@@ -141,6 +141,11 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 		slog.Warn("Failed to dispatch memo created webhook", slog.Any("err", err))
 	}
 
+	// 触发 RAGFlow 同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnMemoCreated(ctx, memo)
+	}
+
 	return memoMessage, nil
 }
 
@@ -471,6 +476,20 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 		slog.Warn("Failed to dispatch memo updated webhook", slog.Any("err", err))
 	}
 
+	// 触发 RAGFlow 同步事件
+	if s.RAGFlowSyncRunner != nil {
+		// 检查是否更新了内容或 visibility
+		for _, path := range request.UpdateMask.Paths {
+			if path == "content" {
+				s.RAGFlowSyncRunner.OnMemoUpdated(ctx, memo)
+				break
+			} else if path == "visibility" {
+				s.RAGFlowSyncRunner.OnMemoVisibilityChanged(ctx, memo.UID, memo.Visibility)
+				break
+			}
+		}
+	}
+
 	return memoMessage, nil
 }
 
@@ -537,6 +556,11 @@ func (s *APIV1Service) DeleteMemo(ctx context.Context, request *v1pb.DeleteMemoR
 	// Delete the memo (store.DeleteMemo handles relation and attachment cleanup)
 	if err = s.Store.DeleteMemo(ctx, &store.DeleteMemo{ID: memo.ID}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete memo")
+	}
+
+	// 触发 RAGFlow 删除同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnMemoDeleted(ctx, memoUID)
 	}
 
 	return &emptypb.Empty{}, nil

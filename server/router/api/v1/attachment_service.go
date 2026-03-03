@@ -176,6 +176,11 @@ func (s *APIV1Service) CreateAttachment(ctx context.Context, request *v1pb.Creat
 		return nil, status.Errorf(codes.Internal, "failed to create attachment: %v", err)
 	}
 
+	// 触发 RAGFlow 同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnAttachmentCreated(ctx, attachment)
+	}
+
 	return convertAttachmentFromStore(attachment), nil
 }
 
@@ -342,6 +347,12 @@ func (s *APIV1Service) DeleteAttachment(ctx context.Context, request *v1pb.Delet
 	}); err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to delete attachment: %v", err)
 	}
+
+	// 触发 RAGFlow 删除同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnAttachmentDeleted(ctx, attachmentUID)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

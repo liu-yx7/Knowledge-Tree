@@ -9,9 +9,9 @@ import (
 )
 
 func (d *DB) CreateAIMessage(ctx context.Context, create *store.AIMessage) (*store.AIMessage, error) {
-	fields := []string{"`uid`", "`conversation_id`", "`role`", "`content`", "`token_count`"}
-	placeholder := []string{"?", "?", "?", "?", "?"}
-	args := []any{create.UID, create.ConversationID, create.Role, create.Content, create.TokenCount}
+	fields := []string{"`uid`", "`conversation_id`", "`role`", "`content`", "`reasoning_content`", "`references_json`", "`token_usage_json`"}
+	placeholder := []string{"?", "?", "?", "?", "?", "?", "?"}
+	args := []any{create.UID, create.ConversationID, create.Role, create.Content, create.ReasoningContent, create.ReferencesJSON, create.TokenUsageJSON}
 
 	stmt := "INSERT INTO `ai_message` (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(placeholder, ", ") + ") RETURNING `id`, `created_ts`"
 	if err := d.db.QueryRowContext(ctx, stmt, args...).Scan(
@@ -41,7 +41,7 @@ func (d *DB) ListAIMessages(ctx context.Context, find *store.FindAIMessage) ([]*
 		orderBy = "DESC"
 	}
 
-	query := "SELECT `id`, `uid`, `conversation_id`, `role`, `content`, `created_ts`, `token_count` FROM `ai_message` WHERE " + strings.Join(where, " AND ") + " ORDER BY `created_ts` " + orderBy
+	query := "SELECT `id`, `uid`, `conversation_id`, `role`, `content`, `reasoning_content`, `references_json`, `token_usage_json`, `created_ts` FROM `ai_message` WHERE " + strings.Join(where, " AND ") + " ORDER BY `created_ts` " + orderBy
 
 	if find.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
@@ -66,8 +66,10 @@ func (d *DB) ListAIMessages(ctx context.Context, find *store.FindAIMessage) ([]*
 			&message.ConversationID,
 			&role,
 			&message.Content,
+			&message.ReasoningContent,
+			&message.ReferencesJSON,
+			&message.TokenUsageJSON,
 			&message.CreatedTs,
-			&message.TokenCount,
 		); err != nil {
 			return nil, err
 		}

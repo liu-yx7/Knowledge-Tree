@@ -6,3 +6,34 @@ services:
       - ~/.memos/:/var/opt/memos
     ports:
       - 5230:5230
+    environment:
+      # RAGFlow 配置
+      - MEMOS_RAGFLOW_BASE_URL=http://ragflow:80
+      - MEMOS_RAGFLOW_API_KEY=${RAGFLOW_API_KEY:-}
+      - MEMOS_RAGFLOW_ASSISTANT_ID=${RAGFLOW_ASSISTANT_ID:-}
+    depends_on:
+      - ragflow
+    networks:
+      - memos-network
+
+  # RAGFlow RAG 服务
+  # 注意：RAGFlow 需要额外的依赖服务（Elasticsearch、MinIO 等）
+  # 完整部署请参考：https://github.com/infiniflow/ragflow
+  ragflow:
+    image: infiniflow/ragflow:latest
+    container_name: ragflow
+    ports:
+      - 9380:80
+    volumes:
+      - ragflow-data:/ragflow/data
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - memos-network
+
+networks:
+  memos-network:
+    driver: bridge
+
+volumes:
+  ragflow-data:

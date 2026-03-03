@@ -321,6 +321,11 @@ func (s *APIV1Service) DeleteUser(ctx context.Context, request *v1pb.DeleteUserR
 		return nil, status.Errorf(codes.Internal, "failed to delete user: %v", err)
 	}
 
+	// 触发 RAGFlow 用户资源清理
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnUserDeleted(ctx, userID)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

@@ -78,12 +78,6 @@ message Conversation {
   // Last update timestamp.
   google.protobuf.Timestamp update_time = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // The AI model used for this conversation.
-  string model = 6;
-
-  // The AI provider (openai, deepseek, etc.).
-  string provider = 7;
-
   // Messages in this conversation (populated on GetConversation).
   repeated Message messages = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
@@ -93,7 +87,7 @@ message Message {
   // Unique identifier for the message.
   string id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // Role of the message sender (user, assistant, system).
+  // Role of the message sender (user, assistant).
   MessageRole role = 2;
 
   // Content of the message.
@@ -102,15 +96,17 @@ message Message {
   // Creation timestamp.
   google.protobuf.Timestamp create_time = 4 [(google.api.field_behavior) = OUTPUT_ONLY];
 
-  // Token count for this message.
-  int32 token_count = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+  // Reasoning content (DeepSeek-style thinking chain, optional).
+  string reasoning_content = 5 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // References JSON (knowledge source citations from RAGFlow).
+  string references_json = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
 enum MessageRole {
   MESSAGE_ROLE_UNSPECIFIED = 0;
   USER = 1;
   ASSISTANT = 2;
-  SYSTEM = 3;
 }
 
 // Request/Response messages
@@ -118,12 +114,6 @@ enum MessageRole {
 message CreateConversationRequest {
   // Optional title for the conversation.
   string title = 1 [(google.api.field_behavior) = OPTIONAL];
-
-  // Optional model to use.
-  string model = 2 [(google.api.field_behavior) = OPTIONAL];
-
-  // Optional provider to use.
-  string provider = 3 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message ListConversationsRequest {
@@ -150,8 +140,6 @@ message DeleteConversationRequest {
 message UpdateConversationRequest {
   string conversation_id = 1 [(google.api.field_behavior) = REQUIRED];
   string title = 2 [(google.api.field_behavior) = OPTIONAL];
-  string model = 3 [(google.api.field_behavior) = OPTIONAL];
-  string provider = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
 message SendMessageRequest {

@@ -85,4 +85,17 @@ type Driver interface {
 	DeleteUserSubscription(ctx context.Context, delete *DeleteUserSubscription) error
 	GetUserSubscriptionCounts(ctx context.Context, userID int32) (*UserSubscriptionCounts, error)
 	IsUserFollowing(ctx context.Context, followerID, followingID int32) (bool, error)
+
+	// RAGFlowUserMapping model related methods.
+	CreateRAGFlowUserMapping(ctx context.Context, create *RAGFlowUserMapping) (*RAGFlowUserMapping, error)
+	ListRAGFlowUserMappings(ctx context.Context, find *FindRAGFlowUserMapping) ([]*RAGFlowUserMapping, error)
+	UpdateRAGFlowUserMapping(ctx context.Context, update *UpdateRAGFlowUserMapping) error
+	DeleteRAGFlowUserMapping(ctx context.Context, delete *DeleteRAGFlowUserMapping) error
+
+	// ContentSyncState model related methods.
+	CreateContentSyncState(ctx context.Context, create *ContentSyncState) (*ContentSyncState, error)
+	ListContentSyncStates(ctx context.Context, find *FindContentSyncState) ([]*ContentSyncState, error)
+	UpdateContentSyncState(ctx context.Context, update *UpdateContentSyncState) error
+	DeleteContentSyncState(ctx context.Context, delete *DeleteContentSyncState) error
+	UpsertContentSyncState(ctx context.Context, create *ContentSyncState) (*ContentSyncState, error)
 }

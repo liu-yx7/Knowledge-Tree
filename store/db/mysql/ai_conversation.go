@@ -9,9 +9,9 @@ import (
 )
 
 func (d *DB) CreateAIConversation(ctx context.Context, create *store.AIConversation) (*store.AIConversation, error) {
-	fields := []string{"`uid`", "`user_id`", "`title`", "`model`", "`provider`"}
-	placeholder := []string{"?", "?", "?", "?", "?"}
-	args := []any{create.UID, create.UserID, create.Title, create.Model, create.Provider}
+	fields := []string{"`uid`", "`user_id`", "`title`"}
+	placeholder := []string{"?", "?", "?"}
+	args := []any{create.UID, create.UserID, create.Title}
 
 	stmt := "INSERT INTO `ai_conversation` (" + strings.Join(fields, ", ") + ") VALUES (" + strings.Join(placeholder, ", ") + ")"
 	result, err := d.db.ExecContext(ctx, stmt, args...)
@@ -25,7 +25,6 @@ func (d *DB) CreateAIConversation(ctx context.Context, create *store.AIConversat
 	}
 	create.ID = int32(id)
 
-	// Fetch the created record to get timestamps
 	row := d.db.QueryRowContext(ctx, "SELECT `created_ts`, `updated_ts`, `row_status` FROM `ai_conversation` WHERE `id` = ?", create.ID)
 	var rowStatus string
 	if err := row.Scan(&create.CreatedTs, &create.UpdatedTs, &rowStatus); err != nil {
@@ -51,7 +50,7 @@ func (d *DB) ListAIConversations(ctx context.Context, find *store.FindAIConversa
 		where, args = append(where, "`row_status` = ?"), append(args, *find.RowStatus)
 	}
 
-	query := "SELECT `id`, `uid`, `user_id`, `title`, UNIX_TIMESTAMP(`created_ts`), UNIX_TIMESTAMP(`updated_ts`), `row_status`, `model`, `provider` FROM `ai_conversation` WHERE " + strings.Join(where, " AND ") + " ORDER BY `updated_ts` DESC"
+	query := "SELECT `id`, `uid`, `user_id`, `title`, `created_ts`, `updated_ts`, `row_status` FROM `ai_conversation` WHERE " + strings.Join(where, " AND ") + " ORDER BY `updated_ts` DESC"
 
 	if find.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
@@ -78,8 +77,6 @@ func (d *DB) ListAIConversations(ctx context.Context, find *store.FindAIConversa
 			&conversation.CreatedTs,
 			&conversation.UpdatedTs,
 			&rowStatus,
-			&conversation.Model,
-			&conversation.Provider,
 		); err != nil {
 			return nil, err
 		}
@@ -99,17 +96,11 @@ func (d *DB) UpdateAIConversation(ctx context.Context, update *store.UpdateAICon
 	if update.Title != nil {
 		set, args = append(set, "`title` = ?"), append(args, *update.Title)
 	}
-	if update.Model != nil {
-		set, args = append(set, "`model` = ?"), append(args, *update.Model)
-	}
-	if update.Provider != nil {
-		set, args = append(set, "`provider` = ?"), append(args, *update.Provider)
-	}
 	if update.RowStatus != nil {
 		set, args = append(set, "`row_status` = ?"), append(args, *update.RowStatus)
 	}
 	if update.UpdatedTs != nil {
-		set, args = append(set, "`updated_ts` = FROM_UNIXTIME(?)"), append(args, *update.UpdatedTs)
+		set, args = append(set, "`updated_ts` = ?"), append(args, *update.UpdatedTs)
 	}
 
 	if len(set) == 0 {
@@ -123,7 +114,13 @@ func (d *DB) UpdateAIConversation(ctx context.Context, update *store.UpdateAICon
 }
 
 func (d *DB) DeleteAIConversation(ctx context.Context, delete *store.DeleteAIConversation) error {
-	stmt := "DELETE FROM `ai_conversation` WHERE `id` = ?"
-	_, err := d.db.ExecContext(ctx, stmt, delete.ID)
+	where, args := []string{"`id` = ?"}, []any{delete.ID}
+
+	if delete.UserID != nil {
+		where, args = append(where, "`user_id` = ?"), append(args, *delete.UserID)
+	}
+
+	stmt := "DELETE FROM `ai_conversation` WHERE " + strings.Join(where, " AND ")
+	_, err := d.db.ExecContext(ctx, stmt, args...)
 	return err
 }

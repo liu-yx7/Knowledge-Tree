@@ -9,10 +9,10 @@ import (
 )
 
 func (d *DB) CreateAIConversation(ctx context.Context, create *store.AIConversation) (*store.AIConversation, error) {
-	fields := []string{"uid", "user_id", "title", "model", "provider"}
-	args := []any{create.UID, create.UserID, create.Title, create.Model, create.Provider}
+	fields := []string{"uid", "user_id", "title"}
+	args := []any{create.UID, create.UserID, create.Title}
 
-	stmt := "INSERT INTO ai_conversation (" + strings.Join(fields, ", ") + ") VALUES ($1, $2, $3, $4, $5) RETURNING id, created_ts, updated_ts, row_status"
+	stmt := "INSERT INTO ai_conversation (" + strings.Join(fields, ", ") + ") VALUES ($1, $2, $3) RETURNING id, created_ts, updated_ts, row_status"
 	var rowStatus string
 	if err := d.db.QueryRowContext(ctx, stmt, args...).Scan(
 		&create.ID,
@@ -47,7 +47,7 @@ func (d *DB) ListAIConversations(ctx context.Context, find *store.FindAIConversa
 		argIndex++
 	}
 
-	query := "SELECT id, uid, user_id, title, created_ts, updated_ts, row_status, model, provider FROM ai_conversation WHERE " + strings.Join(where, " AND ") + " ORDER BY updated_ts DESC"
+	query := "SELECT id, uid, user_id, title, created_ts, updated_ts, row_status FROM ai_conversation WHERE " + strings.Join(where, " AND ") + " ORDER BY updated_ts DESC"
 
 	if find.Limit != nil {
 		query += fmt.Sprintf(" LIMIT %d", *find.Limit)
@@ -74,8 +74,6 @@ func (d *DB) ListAIConversations(ctx context.Context, find *store.FindAIConversa
 			&conversation.CreatedTs,
 			&conversation.UpdatedTs,
 			&rowStatus,
-			&conversation.Model,
-			&conversation.Provider,
 		); err != nil {
 			return nil, err
 		}
@@ -95,14 +93,6 @@ func (d *DB) UpdateAIConversation(ctx context.Context, update *store.UpdateAICon
 
 	if update.Title != nil {
 		set, args = append(set, fmt.Sprintf("title = $%d", argIndex)), append(args, *update.Title)
-		argIndex++
-	}
-	if update.Model != nil {
-		set, args = append(set, fmt.Sprintf("model = $%d", argIndex)), append(args, *update.Model)
-		argIndex++
-	}
-	if update.Provider != nil {
-		set, args = append(set, fmt.Sprintf("provider = $%d", argIndex)), append(args, *update.Provider)
 		argIndex++
 	}
 	if update.RowStatus != nil {
@@ -125,7 +115,14 @@ func (d *DB) UpdateAIConversation(ctx context.Context, update *store.UpdateAICon
 }
 
 func (d *DB) DeleteAIConversation(ctx context.Context, delete *store.DeleteAIConversation) error {
-	stmt := "DELETE FROM ai_conversation WHERE id = $1"
-	_, err := d.db.ExecContext(ctx, stmt, delete.ID)
+	where, args := []string{"id = $1"}, []any{delete.ID}
+	argIndex := 2
+
+	if delete.UserID != nil {
+		where, args = append(where, fmt.Sprintf("user_id = $%d", argIndex)), append(args, *delete.UserID)
+	}
+
+	stmt := "DELETE FROM ai_conversation WHERE " + strings.Join(where, " AND ")
+	_, err := d.db.ExecContext(ctx, stmt, args...)
 	return err
 }
