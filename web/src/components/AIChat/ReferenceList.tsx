@@ -143,6 +143,8 @@ interface DocAgg {
   refIndices: number[];
   isClickable: boolean;
   memoUid?: string;
+  attachmentUid?: string;
+  type: "memo" | "attachment" | "unknown";
 }
 
 /**
@@ -170,8 +172,10 @@ const ReferenceList = ({ references, className, compact = false }: ReferenceList
           docType: ref.docType,
           chunkCount: 1,
           refIndices: [index],
-          isClickable: ref.type === "memo" && !!ref.memoUid,
+          isClickable: (ref.type === "memo" && !!ref.memoUid) || (ref.type === "attachment" && !!ref.attachmentUid),
           memoUid: ref.memoUid,
+          attachmentUid: ref.attachmentUid,
+          type: ref.type,
         });
       }
     });
@@ -251,7 +255,14 @@ const ReferenceList = ({ references, className, compact = false }: ReferenceList
         {docAggs.map((doc) => (
           <div
             key={doc.documentName}
-            onClick={() => doc.isClickable && doc.memoUid && navigate(`/m/${doc.memoUid}`)}
+            onClick={() => {
+              if (!doc.isClickable) return;
+              if (doc.type === "memo" && doc.memoUid) {
+                navigate(`/memos/${doc.memoUid}`);
+              } else if (doc.type === "attachment" && doc.attachmentUid) {
+                window.open(`/file/attachments/${doc.attachmentUid}/${doc.documentName}`, "_blank");
+              }
+            }}
             className={cn(
               "group flex items-center gap-2 rounded-lg border transition-colors",
               "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700",
