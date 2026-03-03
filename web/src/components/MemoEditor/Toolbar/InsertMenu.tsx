@@ -1,7 +1,7 @@
 import { LatLng } from "leaflet";
 import { uniqBy } from "lodash-es";
-import { FileIcon, LinkIcon, LoaderIcon, MapPinIcon, Maximize2Icon, MoreHorizontalIcon, PlusIcon, VideoIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { FileIcon, LinkIcon, LoaderIcon, type LucideIcon, MapPinIcon, Maximize2Icon, MoreHorizontalIcon, PlusIcon, VideoIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDebounce } from "react-use";
 import { useReverseGeocoding } from "@/components/map";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import type { VideoLinkInfo } from "@/components/attachment/utils/videoLinkResol
 const InsertMenu = (props: InsertMenuProps) => {
   const t = useTranslate();
   const { state, actions, dispatch } = useEditorContext();
+  const { location: initialLocation, onLocationChange, onToggleFocusMode, isUploading: isUploadingProp } = props;
 
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
@@ -72,11 +73,15 @@ const InsertMenu = (props: InsertMenuProps) => {
     }
   }, [displayName]);
 
-  const isUploading = selectingFlag || props.isUploading;
+  const isUploading = selectingFlag || isUploadingProp;
 
-  const handleLocationClick = () => {
+  const handleOpenLinkDialog = useCallback(() => {
+    setLinkDialogOpen(true);
+  }, []);
+
+  const handleLocationClick = useCallback(() => {
     setLocationDialogOpen(true);
-    if (!props.location && !location.locationInitialized) {
+    if (!initialLocation && !location.locationInitialized) {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -88,24 +93,63 @@ const InsertMenu = (props: InsertMenuProps) => {
         );
       }
     }
-  };
+  }, [initialLocation, location]);
 
-  const handleLocationConfirm = () => {
+  const handleLocationConfirm = useCallback(() => {
     const newLocation = location.getLocation();
     if (newLocation) {
-      props.onLocationChange(newLocation);
+      onLocationChange(newLocation);
       setLocationDialogOpen(false);
     }
-  };
+  }, [location, onLocationChange]);
 
-  const handleLocationCancel = () => {
+  const handleLocationCancel = useCallback(() => {
     location.reset();
     setLocationDialogOpen(false);
-  };
+  }, [location]);
 
-  const handlePositionChange = (position: LatLng) => {
-    location.handlePositionChange(position);
-  };
+  const handlePositionChange = useCallback(
+    (position: LatLng) => {
+      location.handlePositionChange(position);
+    },
+    [location],
+  );
+
+  const handleToggleFocusMode = useCallback(() => {
+    onToggleFocusMode?.();
+    setMoreSubmenuOpen(false);
+  }, [onToggleFocusMode]);
+
+  const menuItems = useMemo(
+    () =>
+      [
+        {
+          key: "upload",
+          label: t("common.upload"),
+          icon: FileIcon,
+          onClick: handleUploadClick,
+        },
+        {
+          key: "video-link",
+          label: "Add Video Link",
+          icon: VideoIcon,
+          onClick: () => setVideoLinkDialogOpen(true),
+        },
+        {
+          key: "link",
+          label: t("tooltip.link-memo"),
+          icon: LinkIcon,
+          onClick: handleOpenLinkDialog,
+        },
+        {
+          key: "location",
+          label: t("tooltip.select-location"),
+          icon: MapPinIcon,
+          onClick: handleLocationClick,
+        },
+      ] satisfies Array<{ key: string; label: string; icon: LucideIcon; onClick: () => void }>,
+    [handleLocationClick, handleOpenLinkDialog, handleUploadClick, t],
+  );
 
   const handleAddVideoLink = (info: VideoLinkInfo) => {
     // Notify parent to create a video link attachment
@@ -121,22 +165,12 @@ const InsertMenu = (props: InsertMenuProps) => {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={handleUploadClick}>
-            <FileIcon className="w-4 h-4" />
-            {t("common.upload")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setVideoLinkDialogOpen(true)}>
-            <VideoIcon className="w-4 h-4" />
-            Add Video Link
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setLinkDialogOpen(true)}>
-            <LinkIcon className="w-4 h-4" />
-            {t("tooltip.link-memo")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleLocationClick}>
-            <MapPinIcon className="w-4 h-4" />
-            {t("tooltip.select-location")}
-          </DropdownMenuItem>
+          {menuItems.map((item) => (
+            <DropdownMenuItem key={item.key} onClick={item.onClick}>
+              <item.icon className="w-4 h-4" />
+              {item.label}
+            </DropdownMenuItem>
+          ))}
           {/* View submenu with Focus Mode */}
           <DropdownMenuSub open={moreSubmenuOpen} onOpenChange={setMoreSubmenuOpen}>
             <DropdownMenuSubTrigger onPointerEnter={handleTriggerEnter} onPointerLeave={handleTriggerLeave}>
@@ -144,15 +178,9 @@ const InsertMenu = (props: InsertMenuProps) => {
               {t("common.more")}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent onPointerEnter={handleContentEnter} onPointerLeave={handleContentLeave}>
-              <DropdownMenuItem
-                onClick={() => {
-                  props.onToggleFocusMode?.();
-                  setMoreSubmenuOpen(false);
-                }}
-              >
+              <DropdownMenuItem onClick={handleToggleFocusMode}>
                 <Maximize2Icon className="w-4 h-4" />
                 {t("editor.focus-mode")}
-                <span className="ml-auto text-xs text-muted-foreground opacity-60">⌘⇧F</span>
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>

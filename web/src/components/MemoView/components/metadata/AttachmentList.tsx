@@ -1,5 +1,5 @@
 import { FileIcon, PaperclipIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { InlineAttachmentPreview } from "@/components/attachment/InlineAttachmentPreview";
 import type { Attachment } from "@/types/proto/api/v1/attachment_service_pb";
 import { getAttachmentType } from "@/utils/attachment";
@@ -11,13 +11,18 @@ interface AttachmentListProps {
   attachments: Attachment[];
 }
 
+// Type guards for attachment types
+const isImageAttachment = (attachment: Attachment): boolean => getAttachmentType(attachment) === "image/*";
+const isVideoAttachment = (attachment: Attachment): boolean => getAttachmentType(attachment) === "video/*";
+const isMediaAttachment = (attachment: Attachment): boolean => isImageAttachment(attachment) || isVideoAttachment(attachment);
+
+// Separate attachments into media (images/videos) and documents
 const separateMediaAndDocs = (attachments: Attachment[]): { media: Attachment[]; docs: Attachment[] } => {
   const media: Attachment[] = [];
   const docs: Attachment[] = [];
 
   for (const attachment of attachments) {
-    const attachmentType = getAttachmentType(attachment);
-    if (attachmentType === "image/*" || attachmentType === "video/*") {
+    if (isMediaAttachment(attachment)) {
       media.push(attachment);
     } else {
       docs.push(attachment);
@@ -131,7 +136,7 @@ const DocsList = ({
 
 const AttachmentList = ({ attachments }: AttachmentListProps) => {
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
-  const { media: mediaItems, docs: docItems } = separateMediaAndDocs(attachments);
+  const { media: mediaItems, docs: docItems } = useMemo(() => separateMediaAndDocs(attachments), [attachments]);
 
   if (attachments.length === 0) {
     return null;
