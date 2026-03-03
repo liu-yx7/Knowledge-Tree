@@ -186,11 +186,6 @@ const AIChatMessages = ({
           </div>
         </div>
       )}
-
-      {/* 流式引用（流结束后、消息刷新前展示） */}
-      {!isStreaming && streamingReferences.length > 0 && (
-        <ReferenceList references={streamingReferences.map(toReferenceItem)} compact={compact} />
-      )}
     </div>
   );
 };
