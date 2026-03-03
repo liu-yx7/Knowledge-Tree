@@ -58,7 +58,6 @@ export interface StreamState {
 export function useAIChatStream() {
   const queryClient = useQueryClient();
   const abortRef = useRef<AbortController | null>(null);
-  const generationRef = useRef(0);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -66,6 +65,8 @@ export function useAIChatStream() {
   const [references, setReferences] = useState<StreamReference[]>([]);
   const [messageId, setMessageId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** 乐观用户消息 — 发送后立即显示，防止 React Query 缓存过渡期空白 */
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<string | null>(null);
 
   /** 重置所有流式状态 */
   const reset = useCallback(() => {
@@ -74,6 +75,7 @@ export function useAIChatStream() {
     setReferences([]);
     setMessageId("");
     setError(null);
+    setOptimisticUserMessage(null);
   }, []);
 
   /** 中止当前流式请求 */
@@ -82,18 +84,22 @@ export function useAIChatStream() {
       abortRef.current.abort();
       abortRef.current = null;
     }
-    // 不在此处 setIsStreaming(false)，由 sendStreamMessage 的 finally 通过 generationRef 守卫处理
+    setIsStreaming(false);
   }, []);
 
   /** 发送消息并消费 SSE 流 */
   const sendStreamMessage = useCallback(
     async (conversationUid: string, content: string) => {
-      // 中止之前的请求
-      abort();
+      // 中止之前的请求（abort 内部会 setIsStreaming(false)，但紧接着被下面 setIsStreaming(true) 覆盖，
+      // React 18 在同一同步块中 batch，最终只产出一次 render）
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
       reset();
-      const currentGeneration = ++generationRef.current;
+      setOptimisticUserMessage(content);
       setIsStreaming(true);
 
+      // 每次发送创建新的 AbortController；finally 用 identity check 代替 generationRef
       const controller = new AbortController();
       abortRef.current = controller;
 
@@ -185,15 +191,19 @@ export function useAIChatStream() {
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
-          // 用户主动中止，不设置错误
+          // 被新一轮 send 或用户手动 abort，不设置错误
           return;
         }
-        if (generationRef.current === currentGeneration) {
+        // 仅当本次 controller 仍是最新时才写入错误状态
+        if (abortRef.current === controller) {
           setError(err instanceof Error ? err.message : "Stream failed");
         }
       } finally {
-        if (generationRef.current === currentGeneration) {
+        // AbortController identity guard（取代 generationRef）：
+        // 如果 abortRef 仍指向本次 controller，说明没有被新一轮 send 覆盖，可以安全清理
+        if (abortRef.current === controller) {
           setIsStreaming(false);
+          setOptimisticUserMessage(null);
           abortRef.current = null;
 
           // 流结束后刷新对话和消息缓存
@@ -205,7 +215,7 @@ export function useAIChatStream() {
         }
       }
     },
-    [abort, reset, queryClient],
+    [reset, queryClient],
   );
 
   return {
@@ -218,5 +228,6 @@ export function useAIChatStream() {
     references,
     messageId,
     error,
+    optimisticUserMessage,
   } as const;
 }

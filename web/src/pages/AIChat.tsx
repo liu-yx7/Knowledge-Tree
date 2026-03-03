@@ -8,7 +8,7 @@ import { CreateConversationRequestSchema } from "@/types/proto/api/v1/ai_service
 
 const AIChat = () => {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations = [], isLoading: conversationsLoading } = useConversations();
   const { data: messages = [], isLoading: messagesLoading } = useMessages(activeConversationId || "");
@@ -16,10 +16,11 @@ const AIChat = () => {
   const deleteConversation = useDeleteConversation();
   const stream = useAIChatStream();
 
-  // 自动滚动到底部
+  // 自动滚动到底部 — 必须操作 Viewport（Radix ScrollArea 实际可滚动元素）
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const viewport = viewportRef.current;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [messages, stream.streamingContent, stream.isStreaming]);
 
@@ -85,13 +86,13 @@ const AIChat = () => {
       </div>
 
       {/* 右侧聊天区域 */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
         {!activeConversationId ? (
           <AIChatEmptyState onNewChat={handleNewChat} isLoading={createConversation.isPending} />
         ) : (
           <>
             {/* 消息列表 */}
-            <ScrollArea className="flex-1 overflow-hidden" ref={scrollRef}>
+            <ScrollArea className="flex-1" viewportRef={viewportRef}>
               <AIChatMessages
                 messages={messages}
                 isLoading={messagesLoading}
@@ -99,6 +100,7 @@ const AIChat = () => {
                 streamingContent={stream.streamingContent}
                 streamingReasoning={stream.reasoningContent}
                 streamingReferences={stream.references}
+                optimisticUserMessage={stream.optimisticUserMessage}
               />
             </ScrollArea>
 

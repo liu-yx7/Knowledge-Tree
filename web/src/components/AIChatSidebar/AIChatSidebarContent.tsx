@@ -13,7 +13,7 @@ import { CreateConversationRequestSchema } from "@/types/proto/api/v1/ai_service
 
 const AIChatSidebarContent = () => {
   const { activeConversationId, setActiveConversation, closeSidebar } = useAISidebar();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const { data: conversations = [] } = useConversations();
   const { isLoading: conversationLoading } = useConversation(activeConversationId || "");
@@ -21,10 +21,11 @@ const AIChatSidebarContent = () => {
   const createConversation = useCreateConversation();
   const stream = useAIChatStream();
 
-  // 自动滚动到底部
+  // 自动滚动到底部 — 必须操作 Viewport（Radix ScrollArea 实际可滚动元素）
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const viewport = viewportRef.current;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [messages, stream.streamingContent, stream.isStreaming]);
 
@@ -102,7 +103,7 @@ const AIChatSidebarContent = () => {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
+      <ScrollArea className="flex-1" viewportRef={viewportRef}>
         {!activeConversationId ? (
           <AIChatEmptyState onNewChat={handleNewChat} compact isLoading={createConversation.isPending} />
         ) : (
@@ -113,6 +114,7 @@ const AIChatSidebarContent = () => {
             streamingContent={stream.streamingContent}
             streamingReasoning={stream.reasoningContent}
             streamingReferences={stream.references}
+            optimisticUserMessage={stream.optimisticUserMessage}
             compact
           />
         )}

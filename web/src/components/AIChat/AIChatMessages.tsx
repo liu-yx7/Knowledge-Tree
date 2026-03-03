@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Bot, ChevronDown, ChevronRight } from "lucide-react";
 import type { Message } from "@/types/proto/api/v1/ai_service_pb";
 import { MessageRole } from "@/types/proto/api/v1/ai_service_pb";
@@ -20,6 +20,8 @@ interface AIChatMessagesProps {
   streamingReasoning?: string;
   /** 流式传输完成后的引用列表 */
   streamingReferences?: StreamReference[];
+  /** 乐观用户消息（发送后立即展示，防止空白闪烁） */
+  optimisticUserMessage?: string | null;
   compact?: boolean;
 }
 
@@ -86,13 +88,20 @@ const AIChatMessages = ({
   streamingContent = "",
   streamingReasoning = "",
   streamingReferences = [],
+  optimisticUserMessage = null,
   compact = false,
 }: AIChatMessagesProps) => {
+  // 安全网：一旦对话中出现过消息，永远不再回退至空状态（防止 React Query refetch 间隙闪烁）
+  const hasEverHadMessagesRef = useRef(false);
+  if (messages.length > 0 || optimisticUserMessage) {
+    hasEverHadMessagesRef.current = true;
+  }
+
   if (isLoading) {
     return <div className="text-center text-muted-foreground py-8">Loading messages...</div>;
   }
 
-  if (messages.length === 0 && !isStreaming) {
+  if (messages.length === 0 && !isStreaming && !optimisticUserMessage && !hasEverHadMessagesRef.current) {
     return <div className="text-center text-muted-foreground py-8">Start the conversation by typing a message below.</div>;
   }
 
@@ -114,7 +123,7 @@ const AIChatMessages = ({
             >
               {isUser ? <span className={compact ? "text-xs" : "text-sm"}>U</span> : <Bot className={compact ? "w-3 h-3" : "w-4 h-4"} />}
             </div>
-            <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex-1 min-w-0 overflow-x-hidden">
               {/* 思考链（assistant 消息可选） */}
               {!isUser && message.reasoningContent && <ReasoningBlock content={message.reasoningContent} compact={compact} />}
               {/* 消息内容 */}
@@ -128,13 +137,32 @@ const AIChatMessages = ({
         );
       })}
 
+      {/* 乐观用户消息（React Query 尚未返回时立即展示） */}
+      {optimisticUserMessage && (
+        <div className={cn("flex gap-3 rounded-lg bg-primary/5", compact ? "p-2" : "p-4")}>
+          <div
+            className={cn(
+              "rounded-full flex items-center justify-center shrink-0 bg-primary text-primary-foreground",
+              compact ? "w-6 h-6" : "w-8 h-8",
+            )}
+          >
+            <span className={compact ? "text-xs" : "text-sm"}>U</span>
+          </div>
+          <div className="flex-1 min-w-0 overflow-x-hidden">
+            <div className={cn("prose dark:prose-invert max-w-none break-words", compact ? "prose-xs" : "prose-sm")}>
+              <MarkdownRenderer content={optimisticUserMessage} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 流式传输中的 assistant 消息 */}
       {isStreaming && (
         <div className={cn("flex gap-3 rounded-lg bg-muted/50", compact ? "p-2" : "p-4")}>
           <div className={cn("rounded-full flex items-center justify-center shrink-0 bg-muted-foreground/20", compact ? "w-6 h-6" : "w-8 h-8")}>
             <Bot className={compact ? "w-3 h-3" : "w-4 h-4"} />
           </div>
-          <div className="flex-1 min-w-0 overflow-hidden">
+          <div className="flex-1 min-w-0 overflow-x-hidden">
             {/* 流式思考链 */}
             {streamingReasoning && <ReasoningBlock content={streamingReasoning} compact={compact} />}
             {/* 流式内容 */}
@@ -155,11 +183,13 @@ const AIChatMessages = ({
               </div>
             )}
             {/* 流式引用（流结束后展示） */}
-            {!isStreaming && streamingReferences.length > 0 && (
-              <ReferenceList references={streamingReferences.map(toReferenceItem)} compact={compact} />
-            )}
           </div>
         </div>
+      )}
+
+      {/* 流式引用（流结束后、消息刷新前展示） */}
+      {!isStreaming && streamingReferences.length > 0 && (
+        <ReferenceList references={streamingReferences.map(toReferenceItem)} compact={compact} />
       )}
     </div>
   );
