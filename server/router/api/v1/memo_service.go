@@ -141,6 +141,11 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 		slog.Warn("Failed to dispatch memo created webhook", slog.Any("err", err))
 	}
 
+	// 触发 RAGFlow 同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnMemoCreated(ctx, memo)
+	}
+
 	return memoMessage, nil
 }
 
@@ -345,7 +350,7 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 
 	memo, err := s.Store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to get memo: %v", err)
 	}
 	if memo == nil {
 		return nil, status.Errorf(codes.NotFound, "memo not found")
@@ -471,6 +476,20 @@ func (s *APIV1Service) UpdateMemo(ctx context.Context, request *v1pb.UpdateMemoR
 		slog.Warn("Failed to dispatch memo updated webhook", slog.Any("err", err))
 	}
 
+	// 触发 RAGFlow 同步事件
+	if s.RAGFlowSyncRunner != nil {
+		// 检查是否更新了内容或 visibility
+		for _, path := range request.UpdateMask.Paths {
+			if path == "content" {
+				s.RAGFlowSyncRunner.OnMemoUpdated(ctx, memo)
+				break
+			} else if path == "visibility" {
+				s.RAGFlowSyncRunner.OnMemoVisibilityChanged(ctx, memo.UID, memo.Visibility)
+				break
+			}
+		}
+	}
+
 	return memoMessage, nil
 }
 
@@ -539,6 +558,11 @@ func (s *APIV1Service) DeleteMemo(ctx context.Context, request *v1pb.DeleteMemoR
 		return nil, status.Errorf(codes.Internal, "failed to delete memo")
 	}
 
+	// 触发 RAGFlow 删除同步事件
+	if s.RAGFlowSyncRunner != nil {
+		s.RAGFlowSyncRunner.OnMemoDeleted(ctx, memoUID)
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -550,6 +574,21 @@ func (s *APIV1Service) CreateMemoComment(ctx context.Context, request *v1pb.Crea
 	relatedMemo, err := s.Store.GetMemo(ctx, &store.FindMemo{UID: &memoUID})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get memo")
+	}
+	if relatedMemo == nil {
+		return nil, status.Errorf(codes.NotFound, "memo not found")
+	}
+
+	// Check memo visibility before allowing comment.
+	user, err := s.fetchCurrentUser(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get user")
+	}
+	if user == nil {
+		return nil, status.Errorf(codes.Unauthenticated, "user not authenticated")
+	}
+	if relatedMemo.Visibility == store.Private && relatedMemo.CreatorID != user.ID && !isSuperUser(user) {
+		return nil, status.Errorf(codes.PermissionDenied, "permission denied")
 	}
 
 	// Create the memo comment first.
@@ -608,6 +647,10 @@ func (s *APIV1Service) CreateMemoComment(ctx context.Context, request *v1pb.Crea
 		}); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to create inbox")
 		}
+	}
+
+	if err := s.DispatchMemoCommentCreatedWebhook(ctx, memoComment, relatedMemo.CreatorID); err != nil {
+		slog.Warn("Failed to dispatch memo comment created webhook", slog.Any("err", err))
 	}
 
 	return memoComment, nil
@@ -728,6 +771,24 @@ func (s *APIV1Service) DispatchMemoUpdatedWebhook(ctx context.Context, memo *v1p
 // DispatchMemoDeletedWebhook dispatches webhook when memo is deleted.
 func (s *APIV1Service) DispatchMemoDeletedWebhook(ctx context.Context, memo *v1pb.Memo) error {
 	return s.dispatchMemoRelatedWebhook(ctx, memo, "memos.memo.deleted")
+}
+
+// DispatchMemoCommentCreatedWebhook dispatches webhook to the related memo owner when a comment is created.
+func (s *APIV1Service) DispatchMemoCommentCreatedWebhook(ctx context.Context, commentMemo *v1pb.Memo, relatedMemoCreatorID int32) error {
+	webhooks, err := s.Store.GetUserWebhooks(ctx, relatedMemoCreatorID)
+	if err != nil {
+		return err
+	}
+	for _, hook := range webhooks {
+		payload, err := convertMemoToWebhookPayload(commentMemo)
+		if err != nil {
+			return errors.Wrap(err, "failed to convert memo to webhook payload")
+		}
+		payload.ActivityType = "memos.memo.comment.created"
+		payload.URL = hook.Url
+		webhook.PostAsync(payload)
+	}
+	return nil
 }
 
 func (s *APIV1Service) dispatchMemoRelatedWebhook(ctx context.Context, memo *v1pb.Memo, activityType string) error {

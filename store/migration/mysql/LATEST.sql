@@ -107,6 +107,7 @@ CREATE TABLE `reaction` (
 );
 
 -- ai_conversation: stores AI chat conversations
+-- P3 架构：对话由 Knowtree 本地管理，不绑定 RAGFlow Session
 CREATE TABLE `ai_conversation` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `uid` VARCHAR(256) NOT NULL UNIQUE,
@@ -115,21 +116,22 @@ CREATE TABLE `ai_conversation` (
   `created_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `row_status` VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
-  `model` VARCHAR(128) NOT NULL DEFAULT '',
-  `provider` VARCHAR(64) NOT NULL DEFAULT '',
   INDEX `idx_ai_conversation_user_id` (`user_id`),
   INDEX `idx_ai_conversation_created_ts` (`created_ts`)
 );
 
 -- ai_message: stores individual messages in AI conversations
+-- P3 架构：支持引用信息、思考链、Token 统计
 CREATE TABLE `ai_message` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `uid` VARCHAR(256) NOT NULL UNIQUE,
   `conversation_id` INT NOT NULL,
   `role` VARCHAR(16) NOT NULL,
   `content` TEXT NOT NULL,
+  `reasoning_content` TEXT NOT NULL,
+  `references_json` TEXT NOT NULL,
+  `token_usage_json` TEXT NOT NULL,
   `created_ts` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `token_count` INT NOT NULL DEFAULT 0,
   INDEX `idx_ai_message_conversation_id` (`conversation_id`),
   INDEX `idx_ai_message_created_ts` (`created_ts`),
   FOREIGN KEY (`conversation_id`) REFERENCES `ai_conversation`(`id`) ON DELETE CASCADE
@@ -146,4 +148,53 @@ CREATE TABLE `subscription` (
   FOREIGN KEY (`following_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
   INDEX `idx_subscription_follower_id` (`follower_id`),
   INDEX `idx_subscription_following_id` (`following_id`)
+);
+
+-- ==================== RAGFlow 用户映射表 ====================
+-- 记录用户与 RAGFlow Dataset/Assistant 的映射关系
+
+CREATE TABLE `ragflow_user_mapping` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL UNIQUE,
+  `dataset_id` VARCHAR(255) NOT NULL,
+  `dataset_name` VARCHAR(255) NOT NULL DEFAULT '',
+  `assistant_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `document_count` INT NOT NULL DEFAULT 0,
+  `last_sync_ts` BIGINT,
+  `ragflow_user_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_email` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_password` VARCHAR(255) NOT NULL DEFAULT '',
+  `api_key` VARCHAR(255) NOT NULL DEFAULT '',
+  `llm_configured` TINYINT(1) NOT NULL DEFAULT 0,
+  `preferred_llm_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `dataset_ids` TEXT NOT NULL,
+  `quote_enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `reasoning_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
+  INDEX `idx_ragflow_user_mapping_user_id` (`user_id`)
+);
+
+-- ==================== 内容同步状态表 ====================
+-- 记录每个内容项（Memo/Attachment）的 RAGFlow 同步状态
+
+CREATE TABLE `content_sync_state` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `content_type` ENUM('memo', 'attachment') NOT NULL,
+  `content_uid` VARCHAR(255) NOT NULL,
+  `owner_id` INT NOT NULL,
+  `ragflow_status` ENUM('pending', 'synced', 'failed', 'skipped') NOT NULL DEFAULT 'pending',
+  `ragflow_dataset_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_document_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `ragflow_synced_ts` BIGINT,
+  `ragflow_error` TEXT NOT NULL,
+  `content_hash` VARCHAR(64) NOT NULL DEFAULT '',
+  `retry_count` INT NOT NULL DEFAULT 0,
+  `next_retry_ts` BIGINT,
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  UNIQUE(`content_type`, `content_uid`),
+  INDEX `idx_content_sync_state_owner_id` (`owner_id`),
+  INDEX `idx_content_sync_state_status` (`ragflow_status`)
 );

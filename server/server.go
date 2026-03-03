@@ -11,19 +11,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/pkg/errors"
 
 	"github.com/usememos/memos/internal/profile"
-	"github.com/usememos/memos/plugin/llm"
-	"github.com/usememos/memos/plugin/llm/deepseek"
-	"github.com/usememos/memos/plugin/llm/openai"
+	"github.com/usememos/memos/plugin/dashscope"
+	"github.com/usememos/memos/plugin/ragflow"
 	storepb "github.com/usememos/memos/proto/gen/store"
 	apiv1 "github.com/usememos/memos/server/router/api/v1"
 	"github.com/usememos/memos/server/router/fileserver"
 	"github.com/usememos/memos/server/router/frontend"
+	mcprouter "github.com/usememos/memos/server/router/mcp"
 	"github.com/usememos/memos/server/router/rss"
+	"github.com/usememos/memos/server/runner/ragflowsync"
 	"github.com/usememos/memos/server/runner/s3presign"
 	"github.com/usememos/memos/store"
 )
@@ -34,6 +35,8 @@ type Server struct {
 	Store   *store.Store
 
 	echoServer        *echo.Echo
+	httpServer        *http.Server
+	ragflowSyncRunner *ragflowsync.Runner
 	runnerCancelFuncs []context.CancelFunc
 }
 
@@ -44,9 +47,6 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	}
 
 	echoServer := echo.New()
-	echoServer.Debug = true
-	echoServer.HideBanner = true
-	echoServer.HidePort = true
 	echoServer.Use(middleware.Recover())
 	s.echoServer = echoServer
 
@@ -62,7 +62,7 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	s.Secret = secret
 
 	// Register healthz endpoint.
-	echoServer.GET("/healthz", func(c echo.Context) error {
+	echoServer.GET("/healthz", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "Service ready.")
 	})
 
@@ -71,10 +71,28 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 
 	rootGroup := echoServer.Group("")
 
-	// Initialize LLM manager
-	llmManager := initLLMManager()
+	// Initialize RAGFlow client (替代原有的 LLM Manager)
+	ragflowClient := initRAGFlowClient(profile)
+	ragflowConfig := initRAGFlowConfig(profile)
 
-	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, llmManager)
+	// Initialize RAGFlow Provisioner（用户无感知的 RAGFlow 账户自动配置）
+	ragflowProvisioner := initRAGFlowProvisioner(ragflowConfig, store)
+
+	// Initialize RAGFlow Sync Runner
+	s.ragflowSyncRunner = ragflowsync.NewRunner(store, ragflowConfig)
+
+	// 将 Provisioner 注入 Runner，使同步操作使用 per-user Client
+	if ragflowProvisioner != nil {
+		s.ragflowSyncRunner.SetProvisioner(ragflowProvisioner)
+	}
+
+	// Initialize DashScope client (用于获取可用 LLM 模型列表)
+	dashScopeClient := initDashScopeClient()
+
+	apiV1Service := apiv1.NewAPIV1Service(s.Secret, profile, store, ragflowClient, ragflowProvisioner, s.ragflowSyncRunner, dashScopeClient)
+
+	// Register SSE streaming endpoint for AI chat (native HTTP, bypasses gRPC).
+	apiV1Service.RegisterStreamRoutes(echoServer)
 
 	// Register HTTP file server routes BEFORE gRPC-Gateway to ensure proper range request handling for Safari.
 	// This uses native HTTP serving (http.ServeContent) instead of gRPC for video/audio files.
@@ -87,6 +105,10 @@ func NewServer(ctx context.Context, profile *profile.Profile, store *store.Store
 	if err := apiV1Service.RegisterGateway(ctx, echoServer); err != nil {
 		return nil, errors.Wrap(err, "failed to register gRPC gateway")
 	}
+
+	// Register MCP server.
+	mcpService := mcprouter.NewMCPService(s.Store, s.Secret)
+	mcpService.RegisterRoutes(echoServer)
 
 	return s, nil
 }
@@ -106,9 +128,9 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 
 	// Start Echo server directly (no cmux needed - all traffic is HTTP).
-	s.echoServer.Listener = listener
+	s.httpServer = &http.Server{Handler: s.echoServer}
 	go func() {
-		if err := s.echoServer.Start(address); err != nil && err != http.ErrServerClosed {
+		if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("failed to start echo server", "error", err)
 		}
 	}()
@@ -130,9 +152,11 @@ func (s *Server) Shutdown(ctx context.Context) {
 		}
 	}
 
-	// Shutdown echo server.
-	if err := s.echoServer.Shutdown(ctx); err != nil {
-		slog.Error("failed to shutdown server", slog.String("error", err.Error()))
+	// Shutdown HTTP server.
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			slog.Error("failed to shutdown server", slog.String("error", err.Error()))
+		}
 	}
 
 	// Close database connection.
@@ -161,6 +185,18 @@ func (s *Server) StartBackgroundRunners(ctx context.Context) {
 		slog.Info("s3presign runner stopped")
 	}()
 
+	// Start RAGFlow Sync Runner (如果已配置)
+	if s.ragflowSyncRunner != nil {
+		ragflowContext, ragflowCancel := context.WithCancel(ctx)
+		s.runnerCancelFuncs = append(s.runnerCancelFuncs, ragflowCancel)
+
+		go func() {
+			s.ragflowSyncRunner.Run(ragflowContext)
+			slog.Info("ragflow sync runner stopped")
+		}()
+		slog.Info("RAGFlow sync runner started")
+	}
+
 	// Log the number of goroutines running
 	slog.Info("background runners started", "goroutines", runtime.NumGoroutine())
 }
@@ -188,51 +224,117 @@ func (s *Server) getOrUpsertInstanceBasicSetting(ctx context.Context) (*storepb.
 	return instanceBasicSetting, nil
 }
 
-// initLLMManager initializes the LLM manager with configured providers.
-func initLLMManager() *llm.Manager {
-	manager := llm.NewManager()
-
-	// Check for OpenAI API key
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-	if openaiAPIKey != "" {
-		openaiClient := openai.NewClient(openaiAPIKey)
-		manager.Register(openaiClient)
-		slog.Info("registered LLM provider", "provider", "openai")
+// initRAGFlowClient 初始化 RAGFlow 客户端
+// 只需要 BaseURL 即可创建客户端，APIKey 通过 per-user Provisioning 动态获取
+func initRAGFlowClient(p *profile.Profile) *ragflow.Client {
+	baseURL := os.Getenv("MEMOS_RAGFLOW_BASE_URL")
+	if baseURL == "" {
+		baseURL = p.RAGFlowBaseURL
 	}
 
-	// Check for DeepSeek API key
-	deepseekAPIKey := os.Getenv("DEEPSEEK_API_KEY")
-	if deepseekAPIKey != "" {
-		deepseekClient := deepseek.NewClient(deepseekAPIKey)
-		manager.Register(deepseekClient)
-		slog.Info("registered LLM provider", "provider", "deepseek")
+	// 没有配置 BaseURL，RAGFlow 功能完全禁用
+	if baseURL == "" {
+		slog.Info("RAGFlow BaseURL not configured, RAGFlow features disabled")
+		return nil
 	}
 
-	// Set defaults based on available providers
-	defaultProvider := os.Getenv("MEMOS_AI_PROVIDER")
-	defaultModel := os.Getenv("MEMOS_AI_MODEL")
+	cfg := &ragflow.Config{
+		BaseURL: baseURL,
+	}
+	cfg.WithDefaults()
 
-	if defaultProvider == "" {
-		if openaiAPIKey != "" {
-			defaultProvider = "openai"
-			if defaultModel == "" {
-				defaultModel = "gpt-4o-mini"
-			}
-		} else if deepseekAPIKey != "" {
-			defaultProvider = "deepseek"
-			if defaultModel == "" {
-				defaultModel = "deepseek-chat"
-			}
-		}
+	if err := cfg.Validate(); err != nil {
+		slog.Error("RAGFlow configuration invalid", "error", err)
+		return nil
 	}
 
-	manager.SetDefaults(defaultProvider, defaultModel)
+	client := ragflow.NewClient(cfg)
+	slog.Info("RAGFlow client initialized", "baseURL", baseURL)
 
-	// Enable AI if any provider is configured
-	if openaiAPIKey != "" || deepseekAPIKey != "" {
-		manager.SetEnabled(true)
-		slog.Info("AI feature enabled", "defaultProvider", defaultProvider, "defaultModel", defaultModel)
+	return client
+}
+
+// initRAGFlowConfig 初始化 RAGFlow 配置用于 Sync Runner
+func initRAGFlowConfig(p *profile.Profile) *ragflow.Config {
+	baseURL := os.Getenv("MEMOS_RAGFLOW_BASE_URL")
+	if baseURL == "" {
+		baseURL = p.RAGFlowBaseURL
 	}
 
-	return manager
+	// 没有配置 BaseURL，同步功能禁用
+	if baseURL == "" {
+		return nil
+	}
+
+	// 读取默认 LLM 模型配置（用户未选择模型时的默认值）
+	defaultLLMID := os.Getenv("RAGFLOW_DEFAULT_LLM_ID")
+	if defaultLLMID == "" {
+		defaultLLMID = ragflow.GetDefaultLLMID()
+		slog.Info("RAGFLOW_DEFAULT_LLM_ID not set, using default",
+			slog.String("defaultLLMID", defaultLLMID))
+	}
+
+	// 读取 DashScope API Key（配置 RAGFlow Model Provider 的硬性依赖）
+	dashScopeAPIKey := os.Getenv("DASHSCOPE_API_KEY")
+	if dashScopeAPIKey == "" {
+		slog.Error("DASHSCOPE_API_KEY not configured, RAGFlow Model Provider auto-configuration will fail",
+			slog.String("hint", "Set DASHSCOPE_API_KEY to enable Tongyi-Qianwen model provider in RAGFlow"))
+	} else {
+		slog.Info("DashScope API Key configured, RAGFlow Model Provider auto-configuration enabled")
+	}
+
+	cfg := &ragflow.Config{
+		BaseURL:         baseURL,
+		DefaultLLMID:    defaultLLMID,
+		DashScopeAPIKey: dashScopeAPIKey,
+	}
+	cfg.WithDefaults()
+
+	if err := cfg.Validate(); err != nil {
+		slog.Error("RAGFlow configuration invalid for sync runner", "error", err)
+		return nil
+	}
+
+	return cfg
+}
+
+// initRAGFlowProvisioner 初始化 RAGFlow Provisioner
+func initRAGFlowProvisioner(cfg *ragflow.Config, s *store.Store) *ragflow.Provisioner {
+	if cfg == nil {
+		return nil
+	}
+
+	provisioner, err := ragflow.NewProvisioner(cfg, s)
+	if err != nil {
+		slog.Error("RAGFlow provisioner initialization failed", "error", err)
+		return nil
+	}
+
+	slog.Info("RAGFlow provisioner initialized")
+	return provisioner
+}
+
+// initDashScopeClient 初始化 DashScope 客户端
+// 用于获取可用的 LLM 模型列表，供用户在前端选择
+func initDashScopeClient() *dashscope.Client {
+	apiKey := os.Getenv("DASHSCOPE_API_KEY")
+	if apiKey == "" {
+		slog.Warn("DASHSCOPE_API_KEY not configured, LLM model selection will be unavailable",
+			slog.String("hint", "Set DASHSCOPE_API_KEY environment variable to enable model listing"))
+		return nil
+	}
+
+	cfg := &dashscope.Config{
+		APIKey: apiKey,
+	}
+	cfg = cfg.WithDefaults()
+
+	client, err := dashscope.NewClient(cfg)
+	if err != nil {
+		slog.Error("DashScope client initialization failed", "error", err)
+		return nil
+	}
+
+	slog.Info("DashScope client initialized")
+	return client
 }

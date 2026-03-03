@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "gen/api/v1";
+
+// LLMService 提供 LLM 模型管理功能
+// 用于获取可用模型列表和管理用户的模型偏好设置
+service LLMService {
+  // ListAvailableModels 获取可用的 LLM 模型列表
+  // 从 DashScope API 动态获取，带缓存（5 分钟 TTL）
+  rpc ListAvailableModels(ListAvailableModelsRequest) returns (ListAvailableModelsResponse) {
+    option (google.api.http) = {get: "/api/v1/llm/models"};
+  }
+
+  // GetUserLLMPreference 获取用户的 LLM 偏好设置
+  rpc GetUserLLMPreference(GetUserLLMPreferenceRequest) returns (UserLLMPreference) {
+    option (google.api.http) = {get: "/api/v1/llm/preference"};
+  }
+
+  // SetUserLLMPreference 设置用户的 LLM 偏好
+  // 会同步更新 RAGFlow Assistant 的 LLM 配置
+  rpc SetUserLLMPreference(SetUserLLMPreferenceRequest) returns (UserLLMPreference) {
+    option (google.api.http) = {
+      post: "/api/v1/llm/preference"
+      body: "*"
+    };
+  }
+}
+
+// ==================== 模型列表 ====================
+
+message ListAvailableModelsRequest {}
+
+message ListAvailableModelsResponse {
+  // 可用的 LLM 模型列表
+  repeated LLMModel models = 1;
+}
+
+// LLMModel 表示一个可用的 LLM 模型
+message LLMModel {
+  // 模型 ID，格式：{model_name}@{provider}
+  // 例如：qwen-plus@Tongyi-Qianwen
+  string model_id = 1;
+
+  // 模型名称（用于 API 调用）
+  string model_name = 2;
+
+  // 显示名称（用于前端展示）
+  string display_name = 3;
+
+  // 模型提供商
+  string provider = 4;
+
+  // 模型描述
+  string description = 5;
+
+  // 模型状态：RUNNING, STOPPED 等
+  string status = 6;
+}
+
+// ==================== 用户偏好 ====================
+
+message GetUserLLMPreferenceRequest {}
+
+message SetUserLLMPreferenceRequest {
+  // 用户选择的模型 ID，格式：{model_name}@{provider}
+  string model_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UserLLMPreference {
+  // 当前选择的模型 ID
+  string model_id = 1;
+
+  // 当前选择的模型名称
+  string model_name = 2;
+
+  // 当前选择的模型提供商
+  string provider = 3;
+
+  // LLM 是否已配置（RAGFlow 是否已配置百炼 API Key）
+  bool llm_configured = 4;
+}

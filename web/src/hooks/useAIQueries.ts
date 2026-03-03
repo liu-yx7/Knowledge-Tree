@@ -69,7 +69,7 @@ export const useCreateConversation = () => {
   });
 };
 
-// Update conversation (title, model, provider)
+// Update conversation title
 export const useUpdateConversation = () => {
   const queryClient = useQueryClient();
 

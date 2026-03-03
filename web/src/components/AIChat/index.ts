@@ -2,3 +2,8 @@ export { default as AIChatMessages } from "./AIChatMessages";
 export { default as AIChatInput } from "./AIChatInput";
 export { default as AIChatEmptyState } from "./AIChatEmptyState";
 export { default as AIChatConversationList } from "./AIChatConversationList";
+export { default as ReferenceList } from "./ReferenceList";
+export { default as SemanticSearchPanel } from "./SemanticSearchPanel";
+export { default as ModelSelector } from "./ModelSelector";
+export { default as DatasetSelector } from "./DatasetSelector";
+export { default as ChatOptions } from "./ChatOptions";

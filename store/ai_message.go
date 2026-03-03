@@ -8,18 +8,29 @@ type AIMessageRole string
 const (
 	AIMessageRoleUser      AIMessageRole = "user"
 	AIMessageRoleAssistant AIMessageRole = "assistant"
-	AIMessageRoleSystem    AIMessageRole = "system"
 )
 
 // AIMessage represents a message in an AI conversation.
+// P3 架构：消息由 Knowtree 本地存储，支持引用信息和思考链
 type AIMessage struct {
 	ID             int32
 	UID            string
 	ConversationID int32
 	Role           AIMessageRole
 	Content        string
-	CreatedTs      int64
-	TokenCount     int32
+
+	// 思考链（DeepSeek 风格，可选）
+	ReasoningContent string
+
+	// 引用信息（JSON 数组）
+	// 格式: [{"memo_uid":"...","type":"memo","content_snippet":"...","similarity":0.85}]
+	ReferencesJSON string
+
+	// Token 使用统计（JSON 对象）
+	// 格式: {"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}
+	TokenUsageJSON string
+
+	CreatedTs int64
 }
 
 // FindAIMessage specifies filter criteria for finding messages.
