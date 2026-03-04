@@ -158,7 +158,7 @@ func (s *MemoSyncer) DeleteMemoFromRAGFlow(ctx context.Context, memoUID string, 
 // ==================== 批量同步方法 ====================
 
 // SyncPendingMemos 同步所有待处理的 Memo
-func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, resourceGetter func(ownerID int32) (*ragflow.Client, string, error), limit int) (int, int, error) {
+func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, resourceGetter func(ownerID int32, contentType store.ContentType, contentUID string) (*ragflow.Client, string, error), limit int) (int, int, error) {
 	// 获取待同步的状态列表
 	pendingStates, err := s.stateTracker.ListPendingStates(ctx, limit)
 	if err != nil {
@@ -182,7 +182,7 @@ func (s *MemoSyncer) SyncPendingMemos(ctx context.Context, resourceGetter func(o
 
 	for _, state := range memoStates {
 		// 获取用户的 Client 和 Dataset ID
-		client, datasetID, err := resourceGetter(state.OwnerID)
+		client, datasetID, err := resourceGetter(state.OwnerID, store.ContentTypeMemo, state.ContentUID)
 		if err != nil {
 			slog.Error("获取用户 Dataset 失败",
 				slog.Int("ownerID", int(state.OwnerID)),

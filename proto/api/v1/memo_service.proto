@@ -221,6 +221,9 @@ message Memo {
   // Optional. The location of the memo.
   optional Location location = 18 [(google.api.field_behavior) = OPTIONAL];
 
+  // Optional. The notebook ID this memo belongs to.
+  int32 notebook_id = 19 [(google.api.field_behavior) = OPTIONAL];
+
   // Computed properties of a memo.
   message Property {
     bool has_link = 1;

@@ -91,6 +91,19 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 		create.Payload.Location = convertLocationToStore(request.Memo.Location)
 	}
 
+	// Set notebook_id: use the value from the request, or fall back to the user's default notebook.
+	notebookID := request.Memo.NotebookId
+	if notebookID == 0 {
+		isDefault := true
+		defaultNb, err := s.Store.GetNotebook(ctx, &store.FindNotebook{CreatorID: &user.ID, IsDefault: &isDefault})
+		if err == nil && defaultNb != nil {
+			notebookID = defaultNb.ID
+		}
+	}
+	if notebookID != 0 {
+		create.NotebookID = &notebookID
+	}
+
 	memo, err := s.Store.CreateMemo(ctx, create)
 	if err != nil {
 		// Check for unique constraint violation (AIP-133 compliance)
@@ -121,6 +134,15 @@ func (s *APIV1Service) CreateMemo(ctx context.Context, request *v1pb.CreateMemoR
 			return nil, errors.Wrap(err, "failed to get memo attachments")
 		}
 		attachments = a
+
+		// Attachments are now linked to the memo (have MemoID).
+		// Trigger RAGFlow sync so they land in the correct notebook dataset
+		// via attachment → memo → notebook resolution.
+		if s.RAGFlowSyncRunner != nil {
+			for _, att := range attachments {
+				s.RAGFlowSyncRunner.OnAttachmentCreated(ctx, att)
+			}
+		}
 	}
 	if len(request.Memo.Relations) > 0 {
 		_, err := s.SetMemoRelations(ctx, &v1pb.SetMemoRelationsRequest{

@@ -682,3 +682,45 @@ func (s *ConnectServiceHandler) UpdateChatSettings(ctx context.Context, req *con
 	}
 	return connect.NewResponse(resp), nil
 }
+
+// NotebookService
+
+func (s *ConnectServiceHandler) ListNotebooks(ctx context.Context, req *connect.Request[v1pb.ListNotebooksRequest]) (*connect.Response[v1pb.ListNotebooksResponse], error) {
+	resp, err := s.APIV1Service.ListNotebooks(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) GetNotebook(ctx context.Context, req *connect.Request[v1pb.GetNotebookRequest]) (*connect.Response[v1pb.Notebook], error) {
+	resp, err := s.APIV1Service.GetNotebook(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) CreateNotebook(ctx context.Context, req *connect.Request[v1pb.CreateNotebookRequest]) (*connect.Response[v1pb.Notebook], error) {
+	resp, err := s.APIV1Service.CreateNotebook(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) UpdateNotebook(ctx context.Context, req *connect.Request[v1pb.UpdateNotebookRequest]) (*connect.Response[v1pb.Notebook], error) {
+	resp, err := s.APIV1Service.UpdateNotebook(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s *ConnectServiceHandler) DeleteNotebook(ctx context.Context, req *connect.Request[v1pb.DeleteNotebookRequest]) (*connect.Response[emptypb.Empty], error) {
+	resp, err := s.APIV1Service.DeleteNotebook(ctx, req.Msg)
+	if err != nil {
+		return nil, convertGRPCError(err)
+	}
+	return connect.NewResponse(resp), nil
+}

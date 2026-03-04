@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useInstance } from "@/contexts/InstanceContext";
 import { useMemoFilterContext } from "@/contexts/MemoFilterContext";
+import { useNotebookContext } from "@/contexts/NotebookContext";
 import { Visibility } from "@/types/proto/api/v1/memo_service_pb";
 
 const extractUserIdFromName = (name: string): string => {
@@ -40,6 +41,7 @@ export const useMemoFilters = (options: UseMemoFiltersOptions = {}): string | un
   const { shortcuts } = useAuth();
   const { filters, shortcut: currentShortcut } = useMemoFilterContext();
   const { memoRelatedSetting } = useInstance();
+  const { selectedNotebookId } = useNotebookContext();
 
   // Get selected shortcut if needed
   const selectedShortcut = useMemo(() => {
@@ -54,6 +56,11 @@ export const useMemoFilters = (options: UseMemoFiltersOptions = {}): string | un
     // Add creator filter if provided
     if (creatorName) {
       conditions.push(`creator_id == ${extractUserIdFromName(creatorName)}`);
+    }
+
+    // Add notebook filter only when scoped to a specific creator (not on Explore page)
+    if (creatorName && selectedNotebookId !== undefined) {
+      conditions.push(`notebook_id == ${selectedNotebookId}`);
     }
 
     // Add shortcut filter if enabled and selected
@@ -96,5 +103,5 @@ export const useMemoFilters = (options: UseMemoFiltersOptions = {}): string | un
     }
 
     return conditions.length > 0 ? conditions.join(" && ") : undefined;
-  }, [creatorName, includeShortcuts, includePinned, visibilities, selectedShortcut, filters, memoRelatedSetting]);
+  }, [creatorName, includeShortcuts, includePinned, visibilities, selectedShortcut, filters, memoRelatedSetting, selectedNotebookId]);
 };

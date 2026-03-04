@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { toast } from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNotebookContext } from "@/contexts/NotebookContext";
 import useCurrentUser from "@/hooks/useCurrentUser";
 import { memoKeys } from "@/hooks/useMemoQueries";
 import { userKeys } from "@/hooks/useUserQueries";
@@ -39,6 +40,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
   const editorRef = useRef<EditorRefActions>(null);
   const { state, actions, dispatch } = useEditorContext();
   const { userGeneralSetting } = useAuth();
+  const { selectedNotebookId } = useNotebookContext();
 
   const memoName = memo?.name;
 
@@ -70,7 +72,7 @@ const MemoEditorImpl: React.FC<MemoEditorProps> = ({
     dispatch(actions.setLoading("saving", true));
 
     try {
-      const result = await memoService.save(state, { memoName, parentMemoName });
+      const result = await memoService.save(state, { memoName, parentMemoName, notebookId: selectedNotebookId });
 
       if (!result.hasChanges) {
         toast.error(t("editor.no-changes-detected"));

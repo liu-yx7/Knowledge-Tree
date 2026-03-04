@@ -94,6 +94,10 @@ func (m *mockProvisionerStore) UpdateRAGFlowUserMapping(_ context.Context, updat
 	return fmt.Errorf("映射 ID %d 不存在", update.ID)
 }
 
+func (m *mockProvisionerStore) ListNotebooks(_ context.Context, _ *store.FindNotebook) ([]*store.Notebook, error) {
+	return nil, nil
+}
+
 // ==================== 测试辅助 ====================
 
 // newTestProvisioner 创建连接 Mock Server 和 Mock Store 的 Provisioner

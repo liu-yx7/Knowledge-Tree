@@ -79,6 +79,7 @@ export const memoService = {
     options: {
       memoName?: string;
       parentMemoName?: string;
+      notebookId?: number;
     },
   ): Promise<{ memoName: string; hasChanges: boolean }> {
     // 1. Upload local files first
@@ -110,6 +111,7 @@ export const memoService = {
       location: state.metadata.location,
       createTime: state.timestamps.createTime ? timestampFromDate(state.timestamps.createTime) : undefined,
       updateTime: state.timestamps.updateTime ? timestampFromDate(state.timestamps.updateTime) : undefined,
+      notebookId: options.notebookId ?? 0,
     });
 
     const memo = options.parentMemoName

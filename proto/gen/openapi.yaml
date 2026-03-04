@@ -1398,6 +1398,128 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
+    /api/v1/notebooks:
+        get:
+            tags:
+                - NotebookService
+            description: ListNotebooks lists all notebooks for the current user.
+            operationId: NotebookService_ListNotebooks
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListNotebooksResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        post:
+            tags:
+                - NotebookService
+            description: CreateNotebook creates a new notebook.
+            operationId: NotebookService_CreateNotebook
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CreateNotebookRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Notebook'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/notebooks/{id}:
+        get:
+            tags:
+                - NotebookService
+            description: GetNotebook gets a specific notebook.
+            operationId: NotebookService_GetNotebook
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Notebook'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+        delete:
+            tags:
+                - NotebookService
+            description: DeleteNotebook deletes a notebook.
+            operationId: NotebookService_DeleteNotebook
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /api/v1/notebooks/{notebook.id}:
+        patch:
+            tags:
+                - NotebookService
+            description: UpdateNotebook updates a notebook.
+            operationId: NotebookService_UpdateNotebook
+            parameters:
+                - name: notebook.id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/UpdateNotebookRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Notebook'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
     /api/v1/ragflow/search:
         post:
             tags:
@@ -2703,6 +2825,17 @@ components:
                 title:
                     type: string
                     description: Optional title for the conversation.
+        CreateNotebookRequest:
+            required:
+                - title
+            type: object
+            properties:
+                title:
+                    type: string
+                    description: The title of the new notebook.
+                icon:
+                    type: string
+                    description: The icon of the notebook (emoji).
         CreatePersonalAccessTokenRequest:
             required:
                 - parent
@@ -3134,6 +3267,13 @@ components:
                         $ref: '#/components/schemas/Message'
                 nextPageToken:
                     type: string
+        ListNotebooksResponse:
+            type: object
+            properties:
+                notebooks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Notebook'
         ListPersonalAccessTokensResponse:
             type: object
             properties:
@@ -3329,6 +3469,10 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/Location'
                     description: Optional. The location of the memo.
+                notebookId:
+                    type: integer
+                    description: Optional. The notebook ID this memo belongs to.
+                    format: int32
         MemoRelation:
             required:
                 - memo
@@ -3410,6 +3554,48 @@ components:
                     type: string
                     description: References JSON (knowledge source citations from RAGFlow).
             description: Message represents a single message in a conversation.
+        Notebook:
+            type: object
+            properties:
+                id:
+                    readOnly: true
+                    type: integer
+                    description: The system-generated unique identifier.
+                    format: int32
+                uid:
+                    readOnly: true
+                    type: string
+                    description: The unique identifier string.
+                creatorId:
+                    readOnly: true
+                    type: integer
+                    description: The creator user ID.
+                    format: int32
+                title:
+                    type: string
+                    description: The title of the notebook.
+                icon:
+                    type: string
+                    description: The icon of the notebook (emoji).
+                isDefault:
+                    readOnly: true
+                    type: boolean
+                    description: Whether this is the user's default notebook.
+                datasetId:
+                    readOnly: true
+                    type: string
+                    description: The bound RAGFlow dataset ID.
+                createTime:
+                    readOnly: true
+                    type: string
+                    description: The creation time.
+                    format: date-time
+                updateTime:
+                    readOnly: true
+                    type: string
+                    description: The last update time.
+                    format: date-time
+            description: Notebook represents a collection of memos mapped to a RAGFlow Dataset.
         OAuth2Config:
             type: object
             properties:
@@ -3807,6 +3993,16 @@ components:
                     type: string
                 title:
                     type: string
+        UpdateNotebookRequest:
+            required:
+                - notebook
+            type: object
+            properties:
+                notebook:
+                    $ref: '#/components/schemas/Notebook'
+                updateMask:
+                    type: string
+                    format: field-mask
         UpsertMemoReactionRequest:
             required:
                 - name
@@ -4099,6 +4295,10 @@ tags:
         LLMService 提供 LLM 模型管理功能
          用于获取可用模型列表和管理用户的模型偏好设置
     - name: MemoService
+    - name: NotebookService
+      description: |-
+        NotebookService provides notebook (笔记集) management.
+         Each notebook maps to an independent RAGFlow Dataset.
     - name: RAGFlowService
       description: RAGFlowService 提供 RAGFlow 同步状态查询和管理功能
     - name: ShortcutService

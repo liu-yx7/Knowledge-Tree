@@ -50,6 +50,9 @@ type Memo struct {
 	Pinned     bool
 	Payload    *storepb.MemoPayload
 
+	// Notebook binding
+	NotebookID *int32
+
 	// Composed fields
 	ParentUID *string
 }
@@ -67,6 +70,7 @@ type FindMemo struct {
 
 	// Domain specific fields
 	VisibilityList  []Visibility
+	NotebookID      *int32
 	ExcludeContent  bool
 	ExcludeComments bool
 	Filters         []string
@@ -100,6 +104,7 @@ type UpdateMemo struct {
 	Visibility *Visibility
 	Pinned     *bool
 	Payload    *storepb.MemoPayload
+	NotebookID *int32
 }
 
 type DeleteMemo struct {

@@ -39,7 +39,8 @@ CREATE TABLE memo (
   content TEXT NOT NULL,
   visibility TEXT NOT NULL DEFAULT 'PRIVATE',
   pinned BOOLEAN NOT NULL DEFAULT FALSE,
-  payload JSONB NOT NULL DEFAULT '{}'
+  payload JSONB NOT NULL DEFAULT '{}',
+  notebook_id INTEGER REFERENCES notebook(id) ON DELETE SET NULL
 );
 
 -- memo_relation
@@ -149,6 +150,26 @@ CREATE TABLE subscription (
 
 CREATE INDEX idx_subscription_follower_id ON subscription(follower_id);
 CREATE INDEX idx_subscription_following_id ON subscription(following_id);
+
+-- ==================== 笔记集表 ====================
+-- 每个 Notebook 映射一个独立的 RAGFlow Dataset
+
+CREATE TABLE notebook (
+  id SERIAL PRIMARY KEY,
+  uid TEXT NOT NULL UNIQUE,
+  creator_id INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  icon TEXT NOT NULL DEFAULT '',
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  dataset_id VARCHAR(255) NOT NULL DEFAULT '',
+  row_status TEXT NOT NULL DEFAULT 'NORMAL',
+  created_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  updated_ts BIGINT NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()),
+  FOREIGN KEY (creator_id) REFERENCES "user"(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_notebook_creator_id ON notebook(creator_id);
+CREATE UNIQUE INDEX idx_notebook_default ON notebook(creator_id) WHERE is_default = TRUE;
 
 -- ==================== RAGFlow 用户映射表 ====================
 -- 记录用户与 RAGFlow Dataset/Assistant 的映射关系

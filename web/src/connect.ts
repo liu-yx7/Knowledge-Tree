@@ -14,6 +14,7 @@ import { UserService } from "./types/proto/api/v1/user_service_pb";
 import { RAGFlowService } from "./types/proto/api/v1/ragflow_service_pb";
 import { LLMService } from "./types/proto/api/v1/llm_service_pb";
 import { ChatSettingsService } from "./types/proto/api/v1/chat_settings_service_pb";
+import { NotebookService } from "./types/proto/api/v1/notebook_service_pb";
 import { redirectOnAuthFailure } from "./utils/auth-redirect";
 
 interface RequestWithHeader {
@@ -211,3 +212,6 @@ export const llmServiceClient = createClient(LLMService, transport);
 
 // Chat settings service client
 export const chatSettingsServiceClient = createClient(ChatSettingsService, transport);
+
+// Notebook service client
+export const notebookServiceClient = createClient(NotebookService, transport);

@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package memos.api.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "gen/api/v1";
+
+// NotebookService provides notebook (笔记集) management.
+// Each notebook maps to an independent RAGFlow Dataset.
+service NotebookService {
+  // ListNotebooks lists all notebooks for the current user.
+  rpc ListNotebooks(ListNotebooksRequest) returns (ListNotebooksResponse) {
+    option (google.api.http) = {get: "/api/v1/notebooks"};
+  }
+
+  // GetNotebook gets a specific notebook.
+  rpc GetNotebook(GetNotebookRequest) returns (Notebook) {
+    option (google.api.http) = {get: "/api/v1/notebooks/{id}"};
+  }
+
+  // CreateNotebook creates a new notebook.
+  rpc CreateNotebook(CreateNotebookRequest) returns (Notebook) {
+    option (google.api.http) = {
+      post: "/api/v1/notebooks"
+      body: "*"
+    };
+  }
+
+  // UpdateNotebook updates a notebook.
+  rpc UpdateNotebook(UpdateNotebookRequest) returns (Notebook) {
+    option (google.api.http) = {
+      patch: "/api/v1/notebooks/{notebook.id}"
+      body: "*"
+    };
+  }
+
+  // DeleteNotebook deletes a notebook.
+  rpc DeleteNotebook(DeleteNotebookRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/api/v1/notebooks/{id}"};
+  }
+}
+
+// Notebook represents a collection of memos mapped to a RAGFlow Dataset.
+message Notebook {
+  // The system-generated unique identifier.
+  int32 id = 1 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The unique identifier string.
+  string uid = 2 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The creator user ID.
+  int32 creator_id = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The title of the notebook.
+  string title = 4;
+
+  // The icon of the notebook (emoji).
+  string icon = 5;
+
+  // Whether this is the user's default notebook.
+  bool is_default = 6 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The bound RAGFlow dataset ID.
+  string dataset_id = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The creation time.
+  google.protobuf.Timestamp create_time = 8 [(google.api.field_behavior) = OUTPUT_ONLY];
+
+  // The last update time.
+  google.protobuf.Timestamp update_time = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+message ListNotebooksRequest {}
+
+message ListNotebooksResponse {
+  repeated Notebook notebooks = 1;
+}
+
+message GetNotebookRequest {
+  int32 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message CreateNotebookRequest {
+  // The title of the new notebook.
+  string title = 1 [(google.api.field_behavior) = REQUIRED];
+
+  // The icon of the notebook (emoji).
+  string icon = 2;
+}
+
+message UpdateNotebookRequest {
+  Notebook notebook = 1 [(google.api.field_behavior) = REQUIRED];
+
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message DeleteNotebookRequest {
+  int32 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

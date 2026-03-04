@@ -39,7 +39,8 @@ CREATE TABLE `memo` (
   `content` TEXT NOT NULL,
   `visibility` VARCHAR(256) NOT NULL DEFAULT 'PRIVATE',
   `pinned` BOOLEAN NOT NULL DEFAULT FALSE,
-  `payload` JSON NOT NULL
+  `payload` JSON NOT NULL,
+  `notebook_id` INT DEFAULT NULL
 );
 
 -- memo_relation
@@ -148,6 +149,24 @@ CREATE TABLE `subscription` (
   FOREIGN KEY (`following_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
   INDEX `idx_subscription_follower_id` (`follower_id`),
   INDEX `idx_subscription_following_id` (`following_id`)
+);
+
+-- ==================== 笔记集表 ====================
+-- 每个 Notebook 映射一个独立的 RAGFlow Dataset
+
+CREATE TABLE `notebook` (
+  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `uid` VARCHAR(256) NOT NULL UNIQUE,
+  `creator_id` INT NOT NULL,
+  `title` VARCHAR(256) NOT NULL DEFAULT '',
+  `icon` VARCHAR(64) NOT NULL DEFAULT '',
+  `is_default` TINYINT(1) NOT NULL DEFAULT 0,
+  `dataset_id` VARCHAR(255) NOT NULL DEFAULT '',
+  `row_status` VARCHAR(256) NOT NULL DEFAULT 'NORMAL',
+  `created_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  `updated_ts` BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
+  FOREIGN KEY (`creator_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
+  INDEX `idx_notebook_creator_id` (`creator_id`)
 );
 
 -- ==================== RAGFlow 用户映射表 ====================

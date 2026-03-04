@@ -40,7 +40,8 @@ CREATE TABLE memo (
   content TEXT NOT NULL DEFAULT '',
   visibility TEXT NOT NULL CHECK (visibility IN ('PUBLIC', 'PROTECTED', 'PRIVATE')) DEFAULT 'PRIVATE',
   pinned INTEGER NOT NULL CHECK (pinned IN (0, 1)) DEFAULT 0,
-  payload TEXT NOT NULL DEFAULT '{}'
+  payload TEXT NOT NULL DEFAULT '{}',
+  notebook_id INTEGER REFERENCES notebook(id) ON DELETE SET NULL
 );
 
 -- memo_relation
@@ -153,6 +154,24 @@ CREATE TABLE subscription (
 
 CREATE INDEX idx_subscription_follower ON subscription(follower_id);
 CREATE INDEX idx_subscription_following ON subscription(following_id);
+
+-- notebook: stores notebook (笔记集) collections, each mapping to an independent RAGFlow Dataset.
+CREATE TABLE notebook (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid TEXT NOT NULL UNIQUE,
+  creator_id INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  icon TEXT NOT NULL DEFAULT '',
+  is_default INTEGER NOT NULL CHECK (is_default IN (0, 1)) DEFAULT 0,
+  dataset_id TEXT NOT NULL DEFAULT '',
+  row_status TEXT NOT NULL CHECK (row_status IN ('NORMAL', 'ARCHIVED')) DEFAULT 'NORMAL',
+  created_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
+  updated_ts BIGINT NOT NULL DEFAULT (strftime('%s', 'now')),
+  FOREIGN KEY (creator_id) REFERENCES user(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_notebook_creator_id ON notebook(creator_id);
+CREATE UNIQUE INDEX idx_notebook_default ON notebook(creator_id) WHERE is_default = 1;
 
 -- ragflow_user_mapping: stores user to RAGFlow dataset/assistant mapping
 CREATE TABLE ragflow_user_mapping (

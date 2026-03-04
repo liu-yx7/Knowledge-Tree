@@ -34,6 +34,10 @@ func (d *DB) CreateMemo(ctx context.Context, create *store.Memo) (*store.Memo, e
 		fields = append(fields, "updated_ts")
 		args = append(args, create.UpdatedTs)
 	}
+	if create.NotebookID != nil {
+		fields = append(fields, "notebook_id")
+		args = append(args, *create.NotebookID)
+	}
 
 	stmt := "INSERT INTO memo (" + strings.Join(fields, ", ") + ") VALUES (" + placeholders(len(args)) + ") RETURNING id, created_ts, updated_ts, row_status"
 	if err := d.db.QueryRowContext(ctx, stmt, args...).Scan(
@@ -97,6 +101,9 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 	if find.ExcludeComments {
 		where = append(where, "memo_relation.related_memo_id IS NULL")
 	}
+	if v := find.NotebookID; v != nil {
+		where, args = append(where, "memo.notebook_id = "+placeholder(len(args)+1)), append(args, *v)
+	}
 
 	order := "DESC"
 	if find.OrderByTimeAsc {
@@ -124,6 +131,7 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 		`memo.pinned AS pinned`,
 		`memo.payload AS payload`,
 		`CASE WHEN parent_memo.uid IS NOT NULL THEN parent_memo.uid ELSE NULL END AS parent_uid`,
+		`memo.notebook_id AS notebook_id`,
 	}
 	if !find.ExcludeContent {
 		fields = append(fields, `memo.content AS content`)
@@ -163,6 +171,7 @@ func (d *DB) ListMemos(ctx context.Context, find *store.FindMemo) ([]*store.Memo
 			&memo.Pinned,
 			&payloadBytes,
 			&memo.ParentUID,
+			&memo.NotebookID,
 		}
 		if !find.ExcludeContent {
 			dests = append(dests, &memo.Content)
@@ -227,6 +236,9 @@ func (d *DB) UpdateMemo(ctx context.Context, update *store.UpdateMemo) error {
 			return err
 		}
 		set, args = append(set, "payload = "+placeholder(len(args)+1)), append(args, string(payloadBytes))
+	}
+	if v := update.NotebookID; v != nil {
+		set, args = append(set, "notebook_id = "+placeholder(len(args)+1)), append(args, *v)
 	}
 	if len(set) == 0 {
 		return nil

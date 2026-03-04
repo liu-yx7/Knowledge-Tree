@@ -8,6 +8,7 @@ import { Routes } from "@/router";
 import { UserNotification_Status } from "@/types/proto/api/v1/user_service_pb";
 import { useTranslate } from "@/utils/i18n";
 import MemosLogo from "./MemosLogo";
+import NotebookSelector from "./NotebookSelector";
 import UserMenu from "./UserMenu";
 
 interface NavLinkItem {
@@ -118,6 +119,7 @@ const Navigation = (props: Props) => {
             {!props.collapsed && <span className="ml-3 truncate">{navLink.title}</span>}
           </NavLink>
         ))}
+        {currentUser && <NotebookSelector collapsed={collapsed} />}
       </div>
       {currentUser && (
         <div className={cn("w-full flex flex-col justify-end", props.collapsed ? "items-center" : "items-start pl-3")}>
