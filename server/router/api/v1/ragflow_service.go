@@ -156,48 +156,72 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
-	// 通过 Provisioner 获取 per-user Client 和 DatasetID（自动创建缺失资源）
+	// 通过 Provisioner 获取 per-user Client（仅认证，不创建 legacy Dataset）
 	var userClient *ragflow.Client
-	var datasetID string
 
 	if s.RAGFlowProvisioner != nil {
-		userClient, datasetID, err = s.RAGFlowProvisioner.EnsureUserResources(ctx, userID, user.Username)
+		userClient, err = s.RAGFlowProvisioner.GetClientForUser(ctx, userID, user.Username)
 		if err != nil {
-			slog.Warn("SemanticSearch: Provisioner 资源配置失败，返回空结果",
+			slog.Warn("SemanticSearch: 获取用户客户端失败，返回空结果",
 				slog.Int("userID", int(userID)),
 				slog.Any("error", err))
 			return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 		}
 	} else {
-		// 降级：通过 Orchestrator 获取 DatasetID
+		// 降级：通过旧路径获取客户端
 		userClient = s.getUserRAGFlowClient(ctx, userID)
 		if userClient == nil {
 			slog.Warn("SemanticSearch: 用户未完成 RAGFlow Provisioning，返回空结果",
 				slog.Int("userID", int(userID)))
 			return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 		}
+	}
 
-		if s.RAGFlowSyncRunner != nil {
-			if orchestrator := s.RAGFlowSyncRunner.GetOrchestrator(); orchestrator != nil {
-				datasetID, err = orchestrator.GetUserDatasetID(ctx, userID)
-				if err != nil {
-					slog.Warn("SemanticSearch: 获取 DatasetID 失败",
-						slog.Int("userID", int(userID)),
-						slog.Any("error", err))
-				}
+	// 从 notebooks 表收集所有 DatasetID，对缺失的就地补偿创建
+	notebooks, err := s.Store.ListNotebooks(ctx, &store.FindNotebook{CreatorID: &userID})
+	if err != nil {
+		slog.Warn("SemanticSearch: 获取用户 notebooks 失败",
+			slog.Int("userID", int(userID)),
+			slog.Any("error", err))
+		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
+	}
+
+	var datasetIDs []string
+	for _, nb := range notebooks {
+		if nb.DatasetID != "" {
+			datasetIDs = append(datasetIDs, nb.DatasetID)
+		} else if s.RAGFlowProvisioner != nil {
+			// 补偿：notebook 没有 dataset（创建时 RAGFlow 不可用），现在尝试创建
+			dsID, err := s.createNotebookDataset(ctx, userID, user.Username, nb.Title)
+			if err != nil {
+				slog.Warn("SemanticSearch: 补偿创建 notebook dataset 失败",
+					slog.Int("notebookID", int(nb.ID)),
+					slog.Any("error", err))
+				continue
 			}
+			updatedDsID := dsID
+			if updateErr := s.Store.UpdateNotebook(ctx, &store.UpdateNotebook{ID: nb.ID, DatasetID: &updatedDsID}); updateErr != nil {
+				slog.Warn("SemanticSearch: 补偿更新 notebook datasetID 失败",
+					slog.Int("notebookID", int(nb.ID)),
+					slog.Any("error", updateErr))
+				continue
+			}
+			slog.Info("SemanticSearch: 补偿创建 notebook dataset 成功",
+				slog.Int("notebookID", int(nb.ID)),
+				slog.String("datasetID", dsID))
+			datasetIDs = append(datasetIDs, dsID)
 		}
 	}
 
-	if datasetID == "" {
-		slog.Warn("SemanticSearch: 用户的 Dataset ID 为空，返回空结果",
+	if len(datasetIDs) == 0 {
+		slog.Warn("SemanticSearch: 用户没有可用的 Dataset，返回空结果",
 			slog.Int("userID", int(userID)))
 		return &v1pb.SemanticSearchResponse{Results: []*v1pb.SearchResult{}}, nil
 	}
 
-	slog.Info("SemanticSearch: 找到用户 Dataset",
+	slog.Info("SemanticSearch: 找到用户 Datasets",
 		slog.Int("userID", int(userID)),
-		slog.String("datasetID", datasetID))
+		slog.Any("datasetIDs", datasetIDs))
 
 	// 设置默认值
 	topK := int(req.TopK)
@@ -211,14 +235,14 @@ func (s *APIV1Service) SemanticSearch(ctx context.Context, req *v1pb.SemanticSea
 
 	// 使用 per-user 客户端调用 RAGFlow 检索 API
 	retrieveReq := &ragflow.RetrievalRequest{
-		DatasetIDs:          []string{datasetID},
+		DatasetIDs:          datasetIDs,
 		Question:            req.Query,
 		TopK:                topK,
 		SimilarityThreshold: float64(similarityThreshold),
 	}
 
 	slog.Info("SemanticSearch: 调用 RAGFlow Retrieve API",
-		slog.String("datasetID", datasetID),
+		slog.Any("datasetIDs", datasetIDs),
 		slog.String("question", req.Query),
 		slog.Int("topK", topK),
 		slog.Float64("similarityThreshold", float64(similarityThreshold)))

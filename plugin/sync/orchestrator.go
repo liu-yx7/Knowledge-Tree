@@ -22,12 +22,16 @@ type UserGetter interface {
 // ResourceProvisioner 定义 Orchestrator 所需的 Provisioner 接口
 // 使用接口解耦，便于测试和替换
 type ResourceProvisioner interface {
-	// EnsureUserResources 确保用户的全部 RAGFlow 资源就绪，返回 per-user Client 和 DatasetID
+	// GetClientForUser 获取用户的 RAGFlow 客户端（仅认证，不创建 Dataset）
+	GetClientForUser(ctx context.Context, memosUserID int32, username string) (*ragflow.Client, error)
+	// EnsureUserResources 确保用户的 RAGFlow 认证和 Assistant 就绪
+	// 注意：不再创建 legacy per-user Dataset，datasetID 始终返回空字符串
 	EnsureUserResources(ctx context.Context, memosUserID int32, username string) (*ragflow.Client, string, error)
-	// GetUserDatasetID 获取用户的 Dataset ID，不存在则自动创建
+	// GetUserDatasetID 已废弃 — Dataset 现由 notebook 管理，此方法始终返回空
+	// Deprecated: 使用 store.ListNotebooks 获取每个 notebook 的 DatasetID
 	GetUserDatasetID(ctx context.Context, memosUserID int32, username string) (string, error)
-	// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到其 Dataset
-	// 在文档上传并解析完成后调用，因为 RAGFlow 要求 dataset 有 chunk_num > 0
+	// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到所有 notebook 的 Dataset
+	// 从 notebooks 表收集所有 DatasetID 并更新 Assistant 绑定
 	EnsureAssistantDatasetBinding(ctx context.Context, memosUserID int32) error
 }
 
@@ -121,9 +125,136 @@ func (o *Orchestrator) getUsernameByID(ctx context.Context, userID int32) (strin
 	return user.Username, nil
 }
 
+// resolveUserClient 仅获取用户的 per-user RAGFlow Client（不创建 Dataset）
+// 用于同步场景：Dataset 由 notebook 决定，无需通过 Provisioner 创建 legacy per-user Dataset。
+func (o *Orchestrator) resolveUserClient(ctx context.Context, userID int32) (*ragflow.Client, error) {
+	if o.provisioner != nil {
+		username, err := o.getUsernameByID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		return o.provisioner.GetClientForUser(ctx, userID, username)
+	}
+	// 降级：Provisioner 不可用，使用系统级 Client
+	return o.ragflowClient, nil
+}
+
+// resolveNotebookDatasetID 根据内容类型和 UID 查找其所属 notebook 的 RAGFlow Dataset ID。
+// memo → memo.NotebookID → notebook.DatasetID
+// attachment → attachment.MemoID → memo.NotebookID → notebook.DatasetID
+// 如果 notebook 存在但 DatasetID 为空（创建时 RAGFlow 不可用），会尝试就地补偿创建。
+func (o *Orchestrator) resolveNotebookDatasetID(ctx context.Context, contentType store.ContentType, contentUID string) (string, error) {
+	switch contentType {
+	case store.ContentTypeMemo:
+		memo, err := o.store.GetMemo(ctx, &store.FindMemo{UID: &contentUID})
+		if err != nil {
+			return "", fmt.Errorf("获取 Memo 失败: %w", err)
+		}
+		if memo == nil {
+			return "", fmt.Errorf("Memo %s 不存在", contentUID)
+		}
+		if memo.NotebookID == nil {
+			return "", fmt.Errorf("Memo %s 未关联 notebook", contentUID)
+		}
+		nb, err := o.store.GetNotebook(ctx, &store.FindNotebook{ID: memo.NotebookID})
+		if err != nil {
+			return "", fmt.Errorf("获取 Notebook 失败: %w", err)
+		}
+		if nb == nil {
+			return "", fmt.Errorf("Notebook %d 不存在", *memo.NotebookID)
+		}
+		return o.ensureNotebookHasDataset(ctx, nb, memo.CreatorID)
+
+	case store.ContentTypeAttachment:
+		att, err := o.store.GetAttachment(ctx, &store.FindAttachment{UID: &contentUID})
+		if err != nil {
+			return "", fmt.Errorf("获取附件失败: %w", err)
+		}
+		if att == nil {
+			return "", fmt.Errorf("附件 %s 不存在", contentUID)
+		}
+		if att.MemoID == nil {
+			return "", fmt.Errorf("附件 %s 未关联 memo", contentUID)
+		}
+		memo, err := o.store.GetMemo(ctx, &store.FindMemo{ID: att.MemoID})
+		if err != nil {
+			return "", fmt.Errorf("获取附件关联的 Memo 失败: %w", err)
+		}
+		if memo == nil {
+			return "", fmt.Errorf("附件关联的 Memo 不存在")
+		}
+		if memo.NotebookID == nil {
+			return "", fmt.Errorf("附件关联的 Memo 未关联 notebook")
+		}
+		nb, err := o.store.GetNotebook(ctx, &store.FindNotebook{ID: memo.NotebookID})
+		if err != nil {
+			return "", fmt.Errorf("获取 Notebook 失败: %w", err)
+		}
+		if nb == nil {
+			return "", fmt.Errorf("Notebook %d 不存在", *memo.NotebookID)
+		}
+		return o.ensureNotebookHasDataset(ctx, nb, memo.CreatorID)
+	}
+
+	return "", fmt.Errorf("未知的内容类型: %s", contentType)
+}
+
+// ensureNotebookHasDataset 确保 notebook 有关联的 RAGFlow Dataset。
+// 如果 DatasetID 已存在，直接返回。
+// 如果 DatasetID 为空（创建时 RAGFlow 不可用），尝试就地补偿创建。
+func (o *Orchestrator) ensureNotebookHasDataset(ctx context.Context, nb *store.Notebook, ownerID int32) (string, error) {
+	if nb.DatasetID != "" {
+		return nb.DatasetID, nil
+	}
+
+	// 补偿：notebook 没有 dataset，尝试创建
+	if o.provisioner == nil {
+		return "", fmt.Errorf("notebook %d 没有关联的 RAGFlow dataset 且 Provisioner 不可用", nb.ID)
+	}
+
+	username, err := o.getUsernameByID(ctx, ownerID)
+	if err != nil {
+		return "", fmt.Errorf("补偿创建 dataset: 获取用户名失败: %w", err)
+	}
+
+	client, err := o.provisioner.GetClientForUser(ctx, ownerID, username)
+	if err != nil {
+		return "", fmt.Errorf("补偿创建 dataset: 获取用户客户端失败: %w", err)
+	}
+
+	datasetName := fmt.Sprintf("knowtree_nb_%s", nb.UID[:8])
+	dataset, err := client.CreateDataset(ctx, &ragflow.CreateDatasetRequest{
+		Name:        datasetName,
+		Description: nb.Title,
+		ChunkMethod: ragflow.ChunkMethodNaive,
+	})
+	if err != nil {
+		return "", fmt.Errorf("补偿创建 dataset 失败: %w", err)
+	}
+
+	// 回填 DatasetID 到 notebook
+	if updateErr := o.store.UpdateNotebook(ctx, &store.UpdateNotebook{
+		ID:        nb.ID,
+		DatasetID: &dataset.ID,
+	}); updateErr != nil {
+		slog.Warn("补偿更新 notebook datasetID 失败",
+			slog.Int("notebookID", int(nb.ID)),
+			slog.Any("error", updateErr))
+		// dataset 已创建，返回 ID 即使 DB 更新失败
+		return dataset.ID, nil
+	}
+
+	slog.Info("补偿创建 notebook dataset 成功",
+		slog.Int("notebookID", int(nb.ID)),
+		slog.String("datasetID", dataset.ID),
+		slog.String("datasetName", datasetName))
+
+	return dataset.ID, nil
+}
+
 // resolveUserResources 确保用户资源就绪，返回 per-user Client 和 DatasetID
-// 不再通过 SetClient 注入共享状态，而是返回 client 供调用方按需传递，避免并发竞态。
-// 如果 Provisioner 不可用，降级返回系统级 Client。
+// Deprecated: 此方法保留用于 EnsureUserDataset / GetUserDatasetID 等旧接口的降级路径。
+// 新代码应使用 resolveUserClient + resolveNotebookDatasetID。
 func (o *Orchestrator) resolveUserResources(ctx context.Context, userID int32) (*ragflow.Client, string, error) {
 	if o.provisioner != nil {
 		username, err := o.getUsernameByID(ctx, userID)
@@ -148,6 +279,7 @@ func (o *Orchestrator) resolveUserResources(ctx context.Context, userID int32) (
 }
 
 // ensureUserDatasetLegacy 旧的 Dataset 创建逻辑（降级模式，使用系统级 Client）
+// Deprecated: 仅在 Provisioner 不可用时作为降级路径。新架构中 Dataset 由 notebook 管理。
 func (o *Orchestrator) ensureUserDatasetLegacy(ctx context.Context, userID int32) (string, error) {
 	mapping, err := o.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
 		UserID: &userID,
@@ -257,10 +389,25 @@ func (o *Orchestrator) HandleSyncEvent(ctx context.Context, event *SyncEvent) er
 
 // handleCreateOrUpdate 处理创建或更新事件
 func (o *Orchestrator) handleCreateOrUpdate(ctx context.Context, event *SyncEvent) error {
-	// 通过 Provisioner 确保用户资源就绪，获取 per-user Client
-	client, datasetID, err := o.resolveUserResources(ctx, event.UserID)
+	// 获取 per-user Client（仅认证，不创建 legacy Dataset）
+	client, err := o.resolveUserClient(ctx, event.UserID)
 	if err != nil {
-		return errors.Wrap(err, "确保用户 Dataset 失败")
+		return errors.Wrap(err, "获取用户 Client 失败")
+	}
+
+	// 从 notebook 解析目标 Dataset ID
+	datasetID, err := o.resolveNotebookDatasetID(ctx, event.ContentType, event.ContentUID)
+	if err != nil {
+		slog.Warn("无法从 notebook 解析 dataset，跳过同步",
+			slog.String("contentType", string(event.ContentType)),
+			slog.String("contentUID", event.ContentUID),
+			slog.Any("error", err))
+		return nil
+	}
+	if datasetID == "" {
+		slog.Warn("notebook 没有关联的 RAGFlow dataset，跳过同步",
+			slog.String("contentUID", event.ContentUID))
+		return nil
 	}
 
 	switch event.ContentType {
@@ -283,15 +430,11 @@ func (o *Orchestrator) handleCreateOrUpdate(ctx context.Context, event *SyncEven
 
 // handleDelete 处理删除事件
 func (o *Orchestrator) handleDelete(ctx context.Context, event *SyncEvent) error {
-	// 删除操作也需要 per-user Client（从 RAGFlow 删除文档需要认证）
-	client := o.ragflowClient // 默认使用系统级 Client
-	if o.provisioner != nil {
-		username, err := o.getUsernameByID(ctx, event.UserID)
-		if err == nil {
-			if userClient, _, _ := o.provisioner.EnsureUserResources(ctx, event.UserID, username); userClient != nil {
-				client = userClient
-			}
-		}
+	// 获取 per-user Client（仅认证）
+	client, err := o.resolveUserClient(ctx, event.UserID)
+	if err != nil {
+		slog.Warn("获取用户 Client 失败，使用系统级 Client", slog.Any("error", err))
+		client = o.ragflowClient
 	}
 
 	switch event.ContentType {
@@ -306,12 +449,14 @@ func (o *Orchestrator) handleDelete(ctx context.Context, event *SyncEvent) error
 // ==================== 公开接口：用户 Dataset 管理 ====================
 
 // EnsureUserDataset 确保用户有对应的 RAGFlow Dataset（公开接口，兼容旧调用方）
+// Deprecated: Dataset 现由 notebook 管理，此方法仅保留向后兼容。
 func (o *Orchestrator) EnsureUserDataset(ctx context.Context, userID int32) (string, error) {
 	_, datasetID, err := o.resolveUserResources(ctx, userID)
 	return datasetID, err
 }
 
 // GetUserDatasetID 获取用户的 Dataset ID
+// Deprecated: Dataset 现由 notebook 管理。使用 store.ListNotebooks 获取每个 notebook 的 DatasetID。
 // 如果 Provisioner 可用，会自动创建缺失的资源；否则被动查询
 func (o *Orchestrator) GetUserDatasetID(ctx context.Context, userID int32) (string, error) {
 	if o.provisioner != nil {
@@ -351,9 +496,20 @@ func (o *Orchestrator) RunBatchSync(ctx context.Context) error {
 	// 0. 先发现未被追踪的内容，补齐 pending 状态
 	discovered := o.discoverUntrackedContent(ctx)
 
-	// 构建 resourceGetter：通过 Provisioner 获取 per-user Client 和 DatasetID
-	resourceGetter := func(ownerID int32) (*ragflow.Client, string, error) {
-		return o.resolveUserResources(ctx, ownerID)
+	// 构建 resourceGetter：通过 notebook 解析目标 Dataset ID
+	resourceGetter := func(ownerID int32, contentType store.ContentType, contentUID string) (*ragflow.Client, string, error) {
+		client, err := o.resolveUserClient(ctx, ownerID)
+		if err != nil {
+			return nil, "", err
+		}
+		datasetID, err := o.resolveNotebookDatasetID(ctx, contentType, contentUID)
+		if err != nil {
+			return nil, "", err
+		}
+		if datasetID == "" {
+			return nil, "", fmt.Errorf("notebook 没有关联的 RAGFlow dataset")
+		}
+		return client, datasetID, nil
 	}
 
 	// 1. 同步待处理的 Memo
@@ -508,10 +664,19 @@ func (o *Orchestrator) retryFailedStates(ctx context.Context) (int, int) {
 	failCount := 0
 
 	for _, state := range retryableStates {
-		client, datasetID, err := o.resolveUserResources(ctx, state.OwnerID)
+		client, err := o.resolveUserClient(ctx, state.OwnerID)
 		if err != nil {
-			slog.Error("获取用户 Dataset 失败（重试）",
+			slog.Error("获取用户 Client 失败（重试）",
 				slog.Int("ownerID", int(state.OwnerID)),
+				slog.Any("error", err))
+			failCount++
+			continue
+		}
+
+		datasetID, err := o.resolveNotebookDatasetID(ctx, state.ContentType, state.ContentUID)
+		if err != nil {
+			slog.Warn("无法从 notebook 解析 dataset（重试），跳过",
+				slog.String("contentUID", state.ContentUID),
 				slog.Any("error", err))
 			failCount++
 			continue
@@ -560,15 +725,11 @@ func (o *Orchestrator) HandleVisibilityChange(ctx context.Context, memoUID strin
 		return errors.Wrap(err, "获取 Memo 失败")
 	}
 
-	// 获取 per-user Client
-	client := o.ragflowClient // 默认使用系统级 Client
-	if o.provisioner != nil {
-		username, uErr := o.getUsernameByID(ctx, memo.CreatorID)
-		if uErr == nil {
-			if userClient, _, _ := o.provisioner.EnsureUserResources(ctx, memo.CreatorID, username); userClient != nil {
-				client = userClient
-			}
-		}
+	// 获取 per-user Client（仅认证，不创建 legacy Dataset）
+	client, err := o.resolveUserClient(ctx, memo.CreatorID)
+	if err != nil {
+		slog.Warn("获取用户 Client 失败，使用系统级 Client", slog.Any("error", err))
+		client = o.ragflowClient
 	}
 
 	// 更新 Memo 的 visibility
@@ -601,16 +762,11 @@ func (o *Orchestrator) HandleUserDeletion(ctx context.Context, userID int32) err
 		return nil
 	}
 
-	// 用户删除时使用 per-user Client 清理资源（如果 Provisioner 可用）
-	deleteClient := o.ragflowClient
-	if o.provisioner != nil {
-		username, uErr := o.getUsernameByID(ctx, userID)
-		if uErr == nil {
-			client, _, pErr := o.provisioner.EnsureUserResources(ctx, userID, username)
-			if pErr == nil && client != nil {
-				deleteClient = client
-			}
-		}
+	// 用户删除时使用 per-user Client 清理资源
+	deleteClient, err := o.resolveUserClient(ctx, userID)
+	if err != nil {
+		slog.Warn("获取用户 Client 失败，使用系统级 Client 清理", slog.Any("error", err))
+		deleteClient = o.ragflowClient
 	}
 
 	// 2. 删除 RAGFlow Dataset（会自动删除其中的所有文档）

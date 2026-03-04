@@ -86,6 +86,12 @@ type Driver interface {
 	GetUserSubscriptionCounts(ctx context.Context, userID int32) (*UserSubscriptionCounts, error)
 	IsUserFollowing(ctx context.Context, followerID, followingID int32) (bool, error)
 
+	// Notebook model related methods.
+	CreateNotebook(ctx context.Context, create *Notebook) (*Notebook, error)
+	ListNotebooks(ctx context.Context, find *FindNotebook) ([]*Notebook, error)
+	UpdateNotebook(ctx context.Context, update *UpdateNotebook) error
+	DeleteNotebook(ctx context.Context, delete *DeleteNotebook) error
+
 	// RAGFlowUserMapping model related methods.
 	CreateRAGFlowUserMapping(ctx context.Context, create *RAGFlowUserMapping) (*RAGFlowUserMapping, error)
 	ListRAGFlowUserMappings(ctx context.Context, find *FindRAGFlowUserMapping) ([]*RAGFlowUserMapping, error)

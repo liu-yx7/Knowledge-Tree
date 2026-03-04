@@ -4,6 +4,7 @@ import { AttachmentPreviewModal, AttachmentPreviewProvider } from "./components/
 import { AISidebarProvider } from "./contexts/AISidebarContext";
 import { useInstance } from "./contexts/InstanceContext";
 import { MemoFilterProvider } from "./contexts/MemoFilterContext";
+import { NotebookProvider } from "./contexts/NotebookContext";
 import useNavigateTo from "./hooks/useNavigateTo";
 import { useUserLocale } from "./hooks/useUserLocale";
 import { useUserTheme } from "./hooks/useUserTheme";
@@ -60,12 +61,14 @@ const App = () => {
 
   return (
     <MemoFilterProvider>
-      <AISidebarProvider>
-        <AttachmentPreviewProvider>
-          <Outlet />
-          <AttachmentPreviewModal />
-        </AttachmentPreviewProvider>
-      </AISidebarProvider>
+      <NotebookProvider>
+        <AISidebarProvider>
+          <AttachmentPreviewProvider>
+            <Outlet />
+            <AttachmentPreviewModal />
+          </AttachmentPreviewProvider>
+        </AISidebarProvider>
+      </NotebookProvider>
     </MemoFilterProvider>
   );
 };

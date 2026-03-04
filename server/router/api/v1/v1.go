@@ -34,6 +34,7 @@ type APIV1Service struct {
 	v1pb.UnimplementedRAGFlowServiceServer
 	v1pb.UnimplementedLLMServiceServer
 	v1pb.UnimplementedChatSettingsServiceServer
+	v1pb.UnimplementedNotebookServiceServer
 
 	Secret          string
 	Profile         *profile.Profile
@@ -140,6 +141,9 @@ func (s *APIV1Service) RegisterGateway(ctx context.Context, echoServer *echo.Ech
 		return err
 	}
 	if err := v1pb.RegisterChatSettingsServiceHandlerServer(ctx, gwMux, s); err != nil {
+		return err
+	}
+	if err := v1pb.RegisterNotebookServiceHandlerServer(ctx, gwMux, s); err != nil {
 		return err
 	}
 	gwGroup := echoServer.Group("")

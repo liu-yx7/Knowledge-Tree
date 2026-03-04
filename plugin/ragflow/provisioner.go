@@ -43,6 +43,7 @@ type ProvisionerStore interface {
 	GetRAGFlowUserMapping(ctx context.Context, find *store.FindRAGFlowUserMapping) (*store.RAGFlowUserMapping, error)
 	CreateRAGFlowUserMapping(ctx context.Context, create *store.RAGFlowUserMapping) (*store.RAGFlowUserMapping, error)
 	UpdateRAGFlowUserMapping(ctx context.Context, update *store.UpdateRAGFlowUserMapping) error
+	ListNotebooks(ctx context.Context, find *store.FindNotebook) ([]*store.Notebook, error)
 }
 
 // ==================== 构造函数 ====================
@@ -124,9 +125,9 @@ func (p *Provisioner) GetClientForUser(ctx context.Context, memosUserID int32, u
 	return client, nil
 }
 
-// EnsureUserResources 确保用户的全部 RAGFlow 资源就绪（认证 + Dataset + Assistant）
-// 返回 per-user Client 和 DatasetID
-// 这是面向 Orchestrator 的入口，同步事件处理时调用此方法
+// EnsureUserResources 确保用户的 RAGFlow 认证和 Assistant 就绪
+// Dataset 由 notebook 管理（每个 notebook 独立 dataset），此方法不再创建 legacy per-user dataset
+// 返回 per-user Client（datasetID 始终为空，调用者应通过 notebook 获取 dataset）
 func (p *Provisioner) EnsureUserResources(ctx context.Context, memosUserID int32, username string) (*Client, string, error) {
 	// 1. 确保认证配置（API Key）
 	client, err := p.GetClientForUser(ctx, memosUserID, username)
@@ -134,23 +135,17 @@ func (p *Provisioner) EnsureUserResources(ctx context.Context, memosUserID int32
 		return nil, "", fmt.Errorf("确保用户认证配置失败: %w", err)
 	}
 
-	// 2. 确保 Dataset 存在
-	datasetID, err := p.ensureDataset(ctx, client, memosUserID)
-	if err != nil {
-		return nil, "", fmt.Errorf("确保用户 Dataset 失败: %w", err)
-	}
-
-	// 3. 确保 Assistant 存在（独立检查，覆盖 ensureDataset 走快速路径的情况）
-	// 当 DatasetID 已存在但 AssistantID 为空（半初始化状态），ensureDataset 不会触发
-	// ensureAssistant，需在此处独立补偿。
+	// 2. 确保 Assistant 存在（不再创建 legacy per-user Dataset）
 	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
 		UserID: &memosUserID,
 	})
 	if err == nil && mapping != nil && mapping.AssistantID == "" {
-		p.ensureAssistant(ctx, client, memosUserID, mapping.ID, datasetID)
+		// 传空 datasetID — Assistant 创建时不需要绑定 Dataset
+		p.ensureAssistant(ctx, client, memosUserID, mapping.ID, "")
 	}
 
-	return client, datasetID, nil
+	// 返回空 datasetID — 调用者应通过 notebook 获取 Dataset
+	return client, "", nil
 }
 
 // GetUserDatasetID 获取用户的 Dataset ID，不存在则自动创建
@@ -693,8 +688,8 @@ func (p *Provisioner) UpdateUserAssistantLLM(ctx context.Context, memosUserID in
 	return nil
 }
 
-// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到其 Dataset。
-// 如果 Assistant 已经绑定（dataset_ids 非空），则跳过。
+// EnsureAssistantDatasetBinding 确保用户的 Chat Assistant 已绑定到所有 notebook 的 Dataset。
+// 从 notebooks 表收集所有 DatasetID，然后更新 Assistant 绑定。
 // 在文档同步完成后调用，因为 RAGFlow 要求 dataset 的 chunk_num > 0。
 func (p *Provisioner) EnsureAssistantDatasetBinding(ctx context.Context, memosUserID int32) error {
 	mapping, err := p.store.GetRAGFlowUserMapping(ctx, &store.FindRAGFlowUserMapping{
@@ -703,24 +698,41 @@ func (p *Provisioner) EnsureAssistantDatasetBinding(ctx context.Context, memosUs
 	if err != nil {
 		return fmt.Errorf("查询用户映射失败: %w", err)
 	}
-	if mapping == nil || mapping.AssistantID == "" || mapping.DatasetID == "" {
-		return nil // 尚未创建 Assistant 或 Dataset，跳过
+	if mapping == nil || mapping.AssistantID == "" {
+		return nil // 尚未创建 Assistant，跳过
 	}
 	if mapping.APIKey == "" {
 		return fmt.Errorf("用户 API Key 不存在")
 	}
 
-	// 调用 RAGFlow API 绑定 Dataset 到 Assistant
-	client := p.createClient(mapping.APIKey)
-	err = client.UpdateAssistantDatasets(ctx, mapping.AssistantID, []string{mapping.DatasetID})
+	// 从 notebooks 表收集所有 DatasetID
+	notebooks, err := p.store.ListNotebooks(ctx, &store.FindNotebook{CreatorID: &memosUserID})
 	if err != nil {
-		return fmt.Errorf("绑定 Assistant ↔ Dataset 失败: %w", err)
+		return fmt.Errorf("获取用户 notebooks 失败: %w", err)
 	}
 
-	slog.Info("成功绑定 Assistant ↔ Dataset",
+	var datasetIDs []string
+	for _, nb := range notebooks {
+		if nb.DatasetID != "" {
+			datasetIDs = append(datasetIDs, nb.DatasetID)
+		}
+	}
+
+	if len(datasetIDs) == 0 {
+		return nil // 没有 dataset，跳过绑定
+	}
+
+	// 调用 RAGFlow API 绑定所有 notebook datasets 到 Assistant
+	client := p.createClient(mapping.APIKey)
+	err = client.UpdateAssistantDatasets(ctx, mapping.AssistantID, datasetIDs)
+	if err != nil {
+		return fmt.Errorf("绑定 Assistant ↔ Datasets 失败: %w", err)
+	}
+
+	slog.Info("成功绑定 Assistant ↔ notebook Datasets",
 		slog.Int("userID", int(memosUserID)),
 		slog.String("assistantID", mapping.AssistantID),
-		slog.String("datasetID", mapping.DatasetID))
+		slog.Any("datasetIDs", datasetIDs))
 	return nil
 }
 

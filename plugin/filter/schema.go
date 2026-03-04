@@ -224,6 +224,17 @@ func NewSchema() Schema {
 				CompareNeq: true,
 			},
 		},
+		"notebook_id": {
+			Name:        "notebook_id",
+			Kind:        FieldKindScalar,
+			Type:        FieldTypeInt,
+			Column:      Column{Table: "memo", Name: "notebook_id"},
+			Expressions: map[DialectName]string{},
+			AllowedComparisonOps: map[ComparisonOperator]bool{
+				CompareEq:  true,
+				CompareNeq: true,
+			},
+		},
 	}
 
 	envOptions := []cel.EnvOption{
@@ -239,6 +250,7 @@ func NewSchema() Schema {
 		cel.Variable("has_link", cel.BoolType),
 		cel.Variable("has_code", cel.BoolType),
 		cel.Variable("has_incomplete_tasks", cel.BoolType),
+		cel.Variable("notebook_id", cel.IntType),
 		nowFunction,
 	}
 

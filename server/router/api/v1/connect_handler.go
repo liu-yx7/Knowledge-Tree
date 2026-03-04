@@ -46,6 +46,7 @@ func (s *ConnectServiceHandler) RegisterConnectHandlers(mux *http.ServeMux, opts
 		wrap(apiv1connect.NewRAGFlowServiceHandler(s, opts...)),
 		wrap(apiv1connect.NewLLMServiceHandler(s, opts...)),
 		wrap(apiv1connect.NewChatSettingsServiceHandler(s, opts...)),
+		wrap(apiv1connect.NewNotebookServiceHandler(s, opts...)),
 	}
 
 	for _, h := range handlers {
