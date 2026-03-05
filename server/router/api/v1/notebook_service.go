@@ -106,15 +106,6 @@ func (s *APIV1Service) CreateNotebook(ctx context.Context, req *v1pb.CreateNoteb
 		return nil, status.Errorf(codes.Internal, "failed to create notebook: %v", err)
 	}
 
-	// Update the user's RAGFlow Assistant to include all notebook datasets.
-	if s.RAGFlowProvisioner != nil && datasetID != "" {
-		if err := s.syncAssistantDatasets(ctx, userID); err != nil {
-			slog.Warn("CreateNotebook: failed to sync assistant datasets",
-				slog.Int("userID", int(userID)),
-				slog.Any("error", err))
-		}
-	}
-
 	return convertNotebookToProto(notebook), nil
 }
 
@@ -269,11 +260,19 @@ func (s *APIV1Service) ensureDefaultNotebook(ctx context.Context, userID int32) 
 				} else {
 					notebook.DatasetID = dsID
 				}
-				if syncErr := s.syncAssistantDatasets(ctx, userID); syncErr != nil {
-					slog.Warn("ensureDefaultNotebook: failed to sync assistant datasets",
-						slog.Int("userID", int(userID)),
-						slog.Any("error", syncErr))
-				}
+			}
+		}
+	}
+
+	// 确保 Chat Assistant 存在（dataset_ids 留空，绑定由 AI 聊天界面触发）。
+	// EnsureUserResources 内部调用 ensureAssistant（幂等：已有 AssistantID 时跳过）。
+	if s.RAGFlowProvisioner != nil {
+		user, err := s.Store.GetUser(ctx, &store.FindUser{ID: &userID})
+		if err == nil && user != nil {
+			if _, _, err := s.RAGFlowProvisioner.EnsureUserResources(ctx, userID, user.Username); err != nil {
+				slog.Warn("ensureDefaultNotebook: failed to ensure assistant (non-blocking)",
+					slog.Int("userID", int(userID)),
+					slog.Any("error", err))
 			}
 		}
 	}

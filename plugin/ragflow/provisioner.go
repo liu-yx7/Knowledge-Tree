@@ -117,6 +117,17 @@ func (p *Provisioner) GetClientForUser(ctx context.Context, memosUserID int32, u
 		return nil, err
 	}
 
+	// Cache miss = 首次获取或重启后 → 确保 LLM/Embedding 已配置
+	// 这是 DashScope API Key → RAGFlow 默认模型链路的保障点，
+	// 确保 Sync 路径（只用 GetClientForUser，不走 EnsureUserResources）也能触发配置。
+	// EnsureLLMConfig 是幂等的：LLMConfigured==true 时仅一次 DB 读取即返回。
+	if err := p.EnsureLLMConfig(ctx, memosUserID); err != nil {
+		slog.Warn("GetClientForUser: EnsureLLMConfig 失败，LLM/Embedding 可能未就绪",
+			slog.Int("userID", int(memosUserID)),
+			slog.Any("error", err))
+		// 不阻塞：auth 和 LLM 配置是独立关注点，Client 可正常用于数据集操作
+	}
+
 	// 写入缓存
 	p.mu.Lock()
 	p.clientCache[memosUserID] = client
