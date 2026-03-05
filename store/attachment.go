@@ -114,6 +114,67 @@ func (s *Store) UpdateAttachment(ctx context.Context, update *UpdateAttachment) 
 	return s.driver.UpdateAttachment(ctx, update)
 }
 
+// GetAttachmentBlob 按照 StorageType 从正确的存储后端加载附件内容。
+// LOCAL → 读本地文件, S3 → 从对象存储下载, DATABASE → 从 blob 列取。
+func (s *Store) GetAttachmentBlob(ctx context.Context, attachment *Attachment) ([]byte, error) {
+	switch attachment.StorageType {
+	case storepb.AttachmentStorageType_LOCAL:
+		p := filepath.FromSlash(attachment.Reference)
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(s.profile.Data, p)
+		}
+		blob, err := os.ReadFile(p)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read local file")
+		}
+		return blob, nil
+
+	case storepb.AttachmentStorageType_S3:
+		if attachment.Payload == nil {
+			return nil, errors.New("attachment payload is missing")
+		}
+		s3Object := attachment.Payload.GetS3Object()
+		if s3Object == nil {
+			return nil, errors.New("S3 object payload is missing")
+		}
+		s3Config := s3Object.S3Config
+		if s3Config == nil {
+			instanceSetting, err := s.GetInstanceStorageSetting(ctx)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to get instance storage setting")
+			}
+			s3Config = instanceSetting.S3Config
+			if s3Config == nil {
+				return nil, errors.New("S3 config is not found")
+			}
+		}
+		s3Client, err := s3.NewClient(ctx, s3Config)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create S3 client")
+		}
+		blob, err := s3Client.GetObject(ctx, s3Object.Key)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get object from S3")
+		}
+		return blob, nil
+
+	default:
+		// DATABASE storage — blob is stored in the DB, need to re-fetch with GetBlob flag
+		if len(attachment.Blob) > 0 {
+			return attachment.Blob, nil
+		}
+		// Blob not loaded yet, re-fetch from DB
+		full, err := s.GetAttachment(ctx, &FindAttachment{ID: &attachment.ID, GetBlob: true})
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to load blob from database")
+		}
+		if full == nil {
+			return nil, errors.New("attachment not found when loading blob")
+		}
+		return full.Blob, nil
+	}
+}
+
 func (s *Store) DeleteAttachment(ctx context.Context, delete *DeleteAttachment) error {
 	attachment, err := s.GetAttachment(ctx, &FindAttachment{ID: &delete.ID})
 	if err != nil {

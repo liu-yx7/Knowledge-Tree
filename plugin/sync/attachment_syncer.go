@@ -93,17 +93,16 @@ func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID str
 		return nil
 	}
 
-	// 3. 获取附件内容
-	attachmentWithBlob, err := s.store.GetAttachment(ctx, &store.FindAttachment{
-		UID:     &attachmentUID,
-		GetBlob: true,
-	})
+	// 3. 获取附件内容（按 StorageType 从正确的后端加载）
+	blob, err := s.store.GetAttachmentBlob(ctx, attachment)
 	if err != nil {
 		return errors.Wrap(err, "获取附件内容失败")
 	}
-	if attachmentWithBlob == nil || len(attachmentWithBlob.Blob) == 0 {
+	if len(blob) == 0 {
 		return errors.New("附件内容为空")
 	}
+	// 把 blob 写回 attachment 供后续 buildAttachmentDocument 使用
+	attachment.Blob = blob
 
 	// 4. 获取或创建同步状态
 	syncState, err := s.stateTracker.GetSyncState(ctx, store.ContentTypeAttachment, attachmentUID)
@@ -112,7 +111,7 @@ func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID str
 	}
 
 	// 计算内容哈希
-	contentHash := ComputeContentHash(string(attachmentWithBlob.Blob))
+	contentHash := ComputeContentHash(string(attachment.Blob))
 
 	// 检查是否需要同步
 	if syncState != nil && syncState.RAGFlowStatus == store.RAGFlowSyncStatusSynced {
@@ -124,7 +123,7 @@ func (s *AttachmentSyncer) SyncAttachment(ctx context.Context, attachmentUID str
 	}
 
 	// 5. 构建文档
-	doc := s.buildAttachmentDocument(attachmentWithBlob)
+	doc := s.buildAttachmentDocument(attachment)
 
 	// 6. 上传到 RAGFlow
 	var docInfo *ragflow.DocumentInfo

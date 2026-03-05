@@ -177,7 +177,9 @@ func (s *APIV1Service) CreateAttachment(ctx context.Context, request *v1pb.Creat
 	}
 
 	// 触发 RAGFlow 同步事件
-	if s.RAGFlowSyncRunner != nil {
+	// 仅在附件已关联 Memo 时触发同步。若 MemoID 为空（先上传附件、后关联 Memo 的流程），
+	// CreateMemo / SetMemoAttachments 会在关联时再次触发 OnAttachmentCreated，避免重复同步。
+	if s.RAGFlowSyncRunner != nil && attachment.MemoID != nil {
 		s.RAGFlowSyncRunner.OnAttachmentCreated(ctx, attachment)
 	}
 
